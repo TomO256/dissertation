@@ -1,5 +1,7 @@
 from Library import *
 import socket
+import sqlite3
+
 DEBUG = True
 
 if DEBUG:
@@ -25,6 +27,9 @@ def startup():
         send_encrypted_msg(msgToSend,encKey,conn)
         if check!="HELLO":
             return
+        status = checkLogin(privKey,encKey,conn)
+        if not status:
+            break
         while 1:
             action = recv_encrypted_msg(privKey,conn)
             if action == "SEND":
@@ -33,6 +38,55 @@ def startup():
                 forward_stored_message(encKey,conn,addr)
             elif action=="EXIT":
                 return
+
+def init_db():
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        username TEXT UNIQUE PRIMARY KEY,
+        password TEXT)""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS messages(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username_from TEXT,
+        username_to TEXT,
+        contents TEXT,
+        sent DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (username_from) REFERENCES users(username),
+        FOREIGN KEY (username_to) REFERENCES users(username)
+        )""")
+    db.commit()
+    return db,cursor
+
+def addUser(username,password):
+    db,cursor = init_db()
+    cursor.execute("INSERT INTO users (username,password) VALUES (?,?)",(username.upper(),password,))
+    db.commit()
+    db.close()
+
+def checkLogin(decKey,encKey,socket):
+    unpw = recv_encrypted_msg(decKey,socket)
+    print(unpw)
+    un = enclosed(unpw,"USER").upper()
+    pw = enclosed(unpw,"PW")
+    ## Match against db
+
+    db,cursor = init_db()
+    print(un)
+    retrieved = cursor.execute("SELECT * FROM users WHERE username=?",(un,)).fetchall()
+    db.close()
+    print(retrieved)
+    for i in retrieved:
+        ### TODO: Add pw hashing
+        if i[0] == un.upper() and i[1] == pw:
+            send_encrypted_msg(un,encKey,socket)
+            return un
+    print("User validation failed")
+    send_encrypted_msg("NULL",encKey,socket)
+    return False
+
+
 
 def store_sent_message(decKey,encKey,socket):
     msg = recv_encrypted_msg(decKey,socket)
@@ -56,4 +110,5 @@ def forward_stored_message(encKey,socket,addr):
     send_encrypted_msg(str(count),encKey,socket)
     for i in toSend:
         send_encrypted_msg(i,encKey,socket)
+# addUser("Tom","Tom")
 startup()

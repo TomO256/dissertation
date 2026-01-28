@@ -1,6 +1,8 @@
 # Cloud Storage Client (Secure By Design)
 ### TODO: CRITICAL - does not show sender when msg recv - Done
 ## TODO: Add usernames to prevent IP issues
+## TODO: Protect against injection attacks of un/pw
+## TODO: Graceful exiting
 
 import socket
 from Library import *
@@ -50,7 +52,7 @@ def check_message(decKey,encKey,socket):
         msgs.append(recv_encrypted_msg(decKey,socket))
     return msgs
 
-def mainloop(decKey,encKey,sock):
+def mainloop(decKey,encKey,sock,user):
     action = menu()
     if action=="1":
         send_message(decKey,encKey,sock)
@@ -58,7 +60,17 @@ def mainloop(decKey,encKey,sock):
         msgs = check_message(decKey,encKey,sock)
         for counter,i in enumerate(msgs):
             print("Message "+str(counter+1)+": "+i)
-    mainloop(decKey,encKey,sock)
+    mainloop(decKey,encKey,sock,user)
+
+def login(decKey,encKey,sock):
+    username = input("Enter your username")
+    pw = input("Enter your password")
+
+    send_encrypted_msg("USER:"+username+":USER PW:"+pw+":PW",encKey,sock)
+    user = recv_encrypted_msg(decKey,sock)
+    if user == "NULL":
+        user=False
+    return user
 
 def connect():
     s = socket.socket()
@@ -72,7 +84,11 @@ def connect():
         commCheck = recv_encrypted_msg(privKey,s)
         if commCheck == "HELLO":
             print("Established Secure Communication To Server")
-            mainloop(privKey,encKey,s)
+            user = login(privKey,encKey,s)
+            if user == False:
+                print("Authenticated Failed - Disconnecting")
+                return
+            mainloop(privKey,encKey,s,user)
             return
         elif commCheck == "FAIL":
             print("Failed to Establish Secure Communication on Client Side - Disconnecting")
