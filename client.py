@@ -3,14 +3,16 @@
 ## TODO: Add usernames to prevent IP issues
 ## TODO: Protect against injection attacks of un/pw
 ## TODO: Graceful exiting
+## TODO: Connect messages with database
 
 import socket
 from Library import *
+import getpass
 
 DEBUG = True
 
 if DEBUG:
-    IP = "10.41.61.156"
+    IP = "192.168.0.112"
 else:
     IP = "81.109.22.44"
 PORT = 2345
@@ -25,17 +27,17 @@ def menu():
         opt = str(input("Select an Option\n"))
     return opt
 
-def send_message(decKey,encKey,socket):
+def send_message(decKey,encKey,socket,user):
     ## TODO: Validation
     ## TODO: Add user lookup table
 
     # Get IP of user to send to
-    to_send = input("Enter the IP to send the message to\n")
+    to_send = input("Enter the user to send the message to\n")
     # Get Message
     msg = input("Enter your message")
     # Send Message to Server
     send_encrypted_msg("SEND",encKey,socket)
-    send_encrypted_msg("IP:"+to_send+":IP MSG:"+msg+":MSG"+" FROM:"+socket.getsockname()[0]+":FROM",encKey,socket)
+    send_encrypted_msg("TO:"+to_send+":TO MSG:"+msg+":MSG"+" FROM:"+user+":FROM",encKey,socket)
     recv_encrypted_msg(decKey,socket)
     return
 
@@ -46,7 +48,7 @@ def check_message(decKey,encKey,socket):
     count = recv_encrypted_msg(decKey,socket)
     if count=="END":
         print("NO MESSAGES FOUND ON SERVER")
-        return
+        return []
     msgs = []
     for i in range(int(count)):
         msgs.append(recv_encrypted_msg(decKey,socket))
@@ -55,17 +57,55 @@ def check_message(decKey,encKey,socket):
 def mainloop(decKey,encKey,sock,user):
     action = menu()
     if action=="1":
-        send_message(decKey,encKey,sock)
+        send_message(decKey,encKey,sock,user)
     elif action=="2":
         msgs = check_message(decKey,encKey,sock)
         for counter,i in enumerate(msgs):
             print("Message "+str(counter+1)+": "+i)
     mainloop(decKey,encKey,sock,user)
 
-def login(decKey,encKey,sock):
-    username = input("Enter your username")
-    pw = input("Enter your password")
+def pwcheck(password):
+    if len(password) < 8:
+        return False
+    if password.upper() == password:
+        return False
+    if password.lower() == password:
+        return False
+    digit = any([i.isdigit() for i in password])
+    if not digit:
+        return False
+    return True
+    
 
+def createAccount(decKey,encKey,sock):
+    un = input("Enter the username you wish to use\n")
+    pw=getpass.getpass("Enter your chosen password\n")
+    while pwcheck(pw) == False:
+        print("Password must be at least 8 characters, include at least one uppercase, one lowercase and one number")
+        pw = getpass.getpass("Enter your chosen password\n")
+    pwconfirm = getpass.getpass("Please confirm your password\n")
+    if pw!=pwconfirm:
+        print("The passwords do not match, returning to Sign In")
+        return
+    send_encrypted_msg("NEW USER",encKey,sock)
+    send_encrypted_msg("USER:"+un+":USER PW:"+pw+":PW",encKey,sock)
+    response = recv_encrypted_msg(decKey,sock)
+    if response == "SUCCESS":
+        print("Account Created Succesfully, returning to Sign In")
+        return
+    else:
+        print(response)
+        print("Returning to Sign In")
+        return
+
+def login(decKey,encKey,sock):
+    accountExists = input("Do you want to create a new account? (y/N)\n")
+    if accountExists.upper()=="Y" or accountExists.upper()=="YES":
+        createAccount(decKey,encKey,sock)
+        return login(decKey,encKey,sock)
+    username = input("Enter your username")
+    pw = getpass.getpass("Enter your password")
+    send_encrypted_msg("RETURNING USER",encKey,sock)
     send_encrypted_msg("USER:"+username+":USER PW:"+pw+":PW",encKey,sock)
     user = recv_encrypted_msg(decKey,sock)
     if user == "NULL":

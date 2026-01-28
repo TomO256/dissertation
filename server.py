@@ -5,7 +5,7 @@ import sqlite3
 DEBUG = True
 
 if DEBUG:
-    IP = "10.41.61.156"
+    IP = "192.168.0.112"
 else:
     IP = "81.109.22.44"
 
@@ -27,15 +27,15 @@ def startup():
         send_encrypted_msg(msgToSend,encKey,conn)
         if check!="HELLO":
             return
-        status = checkLogin(privKey,encKey,conn)
-        if not status:
+        user = checkLogin(privKey,encKey,conn)
+        if not user:
             break
         while 1:
             action = recv_encrypted_msg(privKey,conn)
             if action == "SEND":
                 store_sent_message(privKey,encKey,conn)
             elif action == "READ":
-                forward_stored_message(encKey,conn,addr)
+                forward_stored_message(encKey,conn,user)
             elif action=="EXIT":
                 return
 
@@ -59,27 +59,38 @@ def init_db():
     db.commit()
     return db,cursor
 
+
 def addUser(username,password):
+    ##TODO: PW check against common db
     db,cursor = init_db()
-    cursor.execute("INSERT INTO users (username,password) VALUES (?,?)",(username.upper(),password,))
+    users = cursor.execute("SELECT * FROM users").fetchall()
+    for user in users:
+        if username.upper() == user[0].upper():
+            return "Error Creating Account: That username is already taken"
+    cursor.execute("INSERT INTO users (username,password) VALUES (?,?)",(username,password,))
     db.commit()
     db.close()
+    return "SUCCESS"
 
 def checkLogin(decKey,encKey,socket):
+    existing = recv_encrypted_msg(decKey,socket)
     unpw = recv_encrypted_msg(decKey,socket)
     print(unpw)
-    un = enclosed(unpw,"USER").upper()
+    un = enclosed(unpw,"USER")
     pw = enclosed(unpw,"PW")
     ## Match against db
-
+    if existing=="NEW USER":
+        status = addUser(un,pw)
+        send_encrypted_msg(status,encKey,socket)
+        return checkLogin(decKey,encKey,socket)
     db,cursor = init_db()
     print(un)
-    retrieved = cursor.execute("SELECT * FROM users WHERE username=?",(un,)).fetchall()
+    retrieved = cursor.execute("SELECT * FROM users WHERE UPPER(username)=?",(un.upper(),)).fetchall()
     db.close()
     print(retrieved)
     for i in retrieved:
         ### TODO: Add pw hashing
-        if i[0] == un.upper() and i[1] == pw:
+        if i[0].upper() == un.upper() and i[1] == pw:
             send_encrypted_msg(un,encKey,socket)
             return un
     print("User validation failed")
@@ -90,19 +101,23 @@ def checkLogin(decKey,encKey,socket):
 
 def store_sent_message(decKey,encKey,socket):
     msg = recv_encrypted_msg(decKey,socket)
-    with open("msgs.txt","a") as f:
-        f.write(msg+"\n")
+    user = enclosed(msg,"FROM")
+    to = enclosed(msg,"TO").upper()
+    contents = enclosed(msg,"MSG")
+    db, cursor = init_db()
+    cursor.execute("INSERT INTO messages (username_from, username_to, contents) VALUES(?,?,?)",(user,to,contents))
+    db.commit()
+    db.close()
     send_encrypted_msg("SUCCESS",encKey,socket)
     return
 
-def forward_stored_message(encKey,socket,addr):
+def forward_stored_message(encKey,socket,user):
     toSend = []
-    with open("msgs.txt","r") as f:
-        for l in f:
-            # print("checking "+enclosed(l,"IP")+" against "+str(addr[0]))
-            if enclosed(l,"IP") == str(addr[0]):
-                # print("success")
-                toSend.append("(FROM "+enclosed(l,"FROM")+"): "+enclosed(l,"MSG"))
+    db, cursor = init_db()
+    messages = cursor.execute("SELECT * FROM messages WHERE UPPER(username_to)=?",(user.upper(),)).fetchall()
+    db.close()
+    for i in messages:
+        toSend.append("(FROM "+i[1]+" @ "+i[4]+"): "+i[3])
     count = len(toSend)
     if count==0:
         send_encrypted_msg("END",encKey,socket)
