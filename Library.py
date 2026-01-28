@@ -76,6 +76,9 @@ def exchangeKeys(pubKey,socket):
     return encKey
 
 def enclosed(string,delim):
-    final = string.split(delim)
-    final = final[1]
-    return final[1:-1]
+    try:
+        final = string.split(delim)
+        final = final[1]
+        return final[1:-1]
+    except:
+        return "ERROR"

@@ -1,4 +1,7 @@
 # Cloud Storage Client (Secure By Design)
+### TODO: CRITICAL - does not show sender when msg recv - Done
+## TODO: Add usernames to prevent IP issues
+
 import socket
 from Library import *
 
@@ -30,22 +33,32 @@ def send_message(decKey,encKey,socket):
     msg = input("Enter your message")
     # Send Message to Server
     send_encrypted_msg("SEND",encKey,socket)
-    send_encrypted_msg("IP:"+to_send+":IP MSG:"+msg+":MSG",encKey,socket)
+    send_encrypted_msg("IP:"+to_send+":IP MSG:"+msg+":MSG"+" FROM:"+socket.getsockname()[0]+":FROM",encKey,socket)
     recv_encrypted_msg(decKey,socket)
     return
 
-def check_message():
+def check_message(decKey,encKey,socket):
     # Prompt server to send messages
     # Probably do this by requesting message count, then iterating for those messages
-    return
+    send_encrypted_msg("READ",encKey,socket)
+    count = recv_encrypted_msg(decKey,socket)
+    if count=="END":
+        print("NO MESSAGES FOUND ON SERVER")
+        return
+    msgs = []
+    for i in range(int(count)):
+        msgs.append(recv_encrypted_msg(decKey,socket))
+    return msgs
 
 def mainloop(decKey,encKey,sock):
     action = menu()
     if action=="1":
         send_message(decKey,encKey,sock)
     elif action=="2":
-        check_message()
-
+        msgs = check_message(decKey,encKey,sock)
+        for counter,i in enumerate(msgs):
+            print("Message "+str(counter+1)+": "+i)
+    mainloop(decKey,encKey,sock)
 
 def connect():
     s = socket.socket()
