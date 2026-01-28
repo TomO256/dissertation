@@ -1,85 +1,65 @@
 # Cloud Storage Client (Secure By Design)
 import socket
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization, hashes
+from Library import *
 
-IP = "192.168.0.112"
+DEBUG = True
+
+if DEBUG:
+    IP = "10.41.61.156"
+else:
+    IP = "81.109.22.44"
 PORT = 2345
 
-#https://cryptography.io/en/latest/hazmat/primitives/asymmetric/rsa/#key-serialization
-def createKeys():
-    privKey = rsa.generate_private_key(public_exponent=65537,key_size=4096)
-    pubKey = privKey.public_key()
-    encryptedCheck = pubKey.encrypt(b'Key Check',
-                                    padding.OAEP(
-                                        mgf = padding.MGF1(algorithm=hashes.SHA256()),
-                                        algorithm=hashes.SHA256(),
-                                        label=None
-                                    ))
-    encryptedCheck = privKey.decrypt(encryptedCheck,
-                                     padding.OAEP(
-                                        mgf = padding.MGF1(algorithm=hashes.SHA256()),
-                                        algorithm=hashes.SHA256(),
-                                        label=None
-                                    ))
-    print(encryptedCheck)
-    if encryptedCheck!=b"Key Check":
-        print("Key Generation Failed")
-        return createKeys()
-    print("Key Generation Succesful")
-    return privKey,pubKey
-
-def encrypt(msg,encryptionKey):
-    msg = msg.encode()
-    return encryptionKey.encrypt(
-        msg,
-        padding.OAEP(
-        mgf = padding.MGF1(algorithm=hashes.SHA256()),
-        algorithm=hashes.SHA256(),
-        label=None
-    ))
-
-def decrypt(msg,decryptionKey):
-    return decryptionKey.decrypt(
-        msg,
-        padding.OAEP(
-        mgf = padding.MGF1(algorithm=hashes.SHA256()),
-        algorithm=hashes.SHA256(),
-        label=None
-    ))
-
-def send_encrypted_msg(msg,encKey,socket):
-    ct = encrypt(msg,encKey)
-    socket.sendall(ct)
-
-def recv_encrypted_msg(decKey,socket):
-    msg = socket.recv(4096)
-    msg = decrypt(msg,decKey)
-    return msg.decode()
     
+def menu():
+    print("1. Send Message")
+    print("2. Check Messages")
+    print("9. Exit")
+    opt = "-1"
+    while opt not in ["9","1","2"]:
+        opt = str(input("Select an Option\n"))
+    return opt
+
+def send_message(decKey,encKey,socket):
+    ## TODO: Validation
+    ## TODO: Add user lookup table
+
+    # Get IP of user to send to
+    to_send = input("Enter the IP to send the message to\n")
+    # Get Message
+    msg = input("Enter your message")
+    # Send Message to Server
+    send_encrypted_msg("SEND",encKey,socket)
+    send_encrypted_msg("IP:"+to_send+":IP MSG:"+msg+":MSG",encKey,socket)
+    recv_encrypted_msg(decKey,socket)
+    return
+
+def check_message():
+    # Prompt server to send messages
+    # Probably do this by requesting message count, then iterating for those messages
+    return
+
+def mainloop(decKey,encKey,sock):
+    action = menu()
+    if action=="1":
+        send_message(decKey,encKey,sock)
+    elif action=="2":
+        check_message()
+
 
 def connect():
     s = socket.socket()
-    s.settimeout(5)
+    s.settimeout(10)
     try:
         s.connect((IP,PORT))
         privKey,  pubKey = createKeys()
-        pubKeyString = pubKey.public_bytes(encoding=serialization.Encoding.PEM,
-                                           format=serialization.PublicFormat.SubjectPublicKeyInfo)
-
-        ## On recieving a connection the sockets should create keys
-        ## Send PublicKey
-        s.sendall(pubKeyString)
-        ## Recv publickey
-        encKey = s.recv(4096)
-        encKey = serialization.load_pem_public_key(encKey)
-
+        encKey = exchangeKeys(pubKey,s)
         ## Both client and server should now have three keys each
         send_encrypted_msg("HELLO",encKey,s)
         commCheck = recv_encrypted_msg(privKey,s)
         if commCheck == "HELLO":
-            print("Established Secure Communication")
-            #remove this return when you return#
+            print("Established Secure Communication To Server")
+            mainloop(privKey,encKey,s)
             return
         elif commCheck == "FAIL":
             print("Failed to Establish Secure Communication on Client Side - Disconnecting")
