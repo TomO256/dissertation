@@ -12,9 +12,10 @@ import getpass
 DEBUG = True
 
 if DEBUG:
-    IP = "192.168.0.112"
+    IP = socket.gethostbyname(socket.gethostname())
 else:
     IP = "81.109.22.44"
+
 PORT = 2345
 
     
@@ -114,7 +115,7 @@ def login(decKey,encKey,sock):
 
 def connect():
     s = socket.socket()
-    s.settimeout(10)
+    s.settimeout(20)
     try:
         s.connect((IP,PORT))
         privKey,  pubKey = createKeys()

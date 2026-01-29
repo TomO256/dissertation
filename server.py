@@ -1,13 +1,14 @@
 from Library import *
 import socket
 import sqlite3
+import bcrypt
 
 DEBUG = True
+test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+test_socket.connect(("8.8.8.8",80))
+IP = test_socket.getsockname()[0]
+print("Running on: "+IP)
 
-if DEBUG:
-    IP = "192.168.0.112"
-else:
-    IP = "81.109.22.44"
 
 PORT = 2345
 def startup():
@@ -67,15 +68,22 @@ def addUser(username,password):
     for user in users:
         if username.upper() == user[0].upper():
             return "Error Creating Account: That username is already taken"
+    password = hash_pw(password)
     cursor.execute("INSERT INTO users (username,password) VALUES (?,?)",(username,password,))
     db.commit()
     db.close()
     return "SUCCESS"
 
+def hash_pw(password):
+    print(password)
+    return bcrypt.hashpw(password.encode(),bcrypt.gensalt())
+
+def check_pw(plaintext,hashed_pw):
+    return bcrypt.checkpw(plaintext.encode(),hashed_pw)
+
 def checkLogin(decKey,encKey,socket):
     existing = recv_encrypted_msg(decKey,socket)
     unpw = recv_encrypted_msg(decKey,socket)
-    print(unpw)
     un = enclosed(unpw,"USER")
     pw = enclosed(unpw,"PW")
     ## Match against db
@@ -90,7 +98,7 @@ def checkLogin(decKey,encKey,socket):
     print(retrieved)
     for i in retrieved:
         ### TODO: Add pw hashing
-        if i[0].upper() == un.upper() and i[1] == pw:
+        if i[0].upper() == un.upper() and check_pw(pw,i[1]):
             send_encrypted_msg(un,encKey,socket)
             return un
     print("User validation failed")
