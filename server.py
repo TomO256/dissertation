@@ -28,7 +28,7 @@ def startup():
         send_encrypted_msg(msgToSend,encKey,conn)
         if check!="HELLO":
             return
-        user = checkLogin(privKey,encKey,conn)
+        user,encKey = checkLogin(privKey,encKey,conn)
         if not user:
             break
         while 1:
@@ -46,7 +46,8 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users(
         username TEXT UNIQUE PRIMARY KEY,
-        password TEXT)""")
+        password TEXT,
+        public_key TEXT)""")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS messages(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,12 +75,19 @@ def addUser(username,password):
     db.close()
     return "SUCCESS"
 
+def addUserPubKey(username,pubKey):
+    db,cursor = init_db()
+    cursor.execute("UPDATE users SET public_key=? WHERE UPPER(username)=?",(pubKey,username.upper(),))
+    db.commit()
+    db.close()
+
 def hash_pw(password):
     print(password)
     return bcrypt.hashpw(password.encode(),bcrypt.gensalt())
 
 def check_pw(plaintext,hashed_pw):
     return bcrypt.checkpw(plaintext.encode(),hashed_pw)
+
 
 def checkLogin(decKey,encKey,socket):
     existing = recv_encrypted_msg(decKey,socket)
@@ -90,6 +98,10 @@ def checkLogin(decKey,encKey,socket):
     if existing=="NEW USER":
         status = addUser(un,pw)
         send_encrypted_msg(status,encKey,socket)
+        if status=="SUCCESS":
+            lenPubKey = socket.recv(8).decode()
+            permClientPub = socket.recv(int(lenPubKey))
+            addUserPubKey(un,permClientPub)
         return checkLogin(decKey,encKey,socket)
     db,cursor = init_db()
     print(un)
@@ -97,13 +109,12 @@ def checkLogin(decKey,encKey,socket):
     db.close()
     print(retrieved)
     for i in retrieved:
-        ### TODO: Add pw hashing
         if i[0].upper() == un.upper() and check_pw(pw,i[1]):
             send_encrypted_msg(un,encKey,socket)
-            return un
+            return un, serialize_public(i[2])
     print("User validation failed")
     send_encrypted_msg("NULL",encKey,socket)
-    return False
+    return False, False
 
 
 
