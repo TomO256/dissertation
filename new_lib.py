@@ -79,7 +79,6 @@ class RSA(object):
     def exchangeKeys(self,socket):
        ## On recieving a connection the sockets should create keys
         ## Send PublicKey
-        print(socket)
         socket.send(bytesLength(self.pub_plain))
         socket.sendall(self.pub_plain)
         ## Recv publickey
@@ -99,6 +98,19 @@ class RSA(object):
         msg = socket.recv(length)
         msg = self.decrypt(msg)
         return msg.decode()
+    
+    def write_key_to_file(self,file):
+        with open(file, "+wb") as f:
+            f.write(self.__privKey)
+        return
+
+    def read_key_from_file(self,file):
+        try:
+            with open(file,"rb") as f:
+                privKey = self.serialize_private(f.read())
+            return privKey
+        except Exception as e:
+            return False
         
 
 
@@ -150,3 +162,12 @@ def bytesLength(string):
     while len(l)<8:
         l="0"+l
     return l.encode()
+
+def enclosed(string,delim):
+    try:
+        final = string.split(delim)
+        final = final[1]
+        return final[1:-1]
+    except:
+        return "ERROR"
+    
