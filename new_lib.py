@@ -41,7 +41,8 @@ class RSA(object):
                              encryption_algorithm=serialization.NoEncryption())
 
     def encrypt(self,msg,encryption_key):
-        msg = msg.encode()
+        if type(msg) !=bytes:
+            msg = msg.encode()
         return encryption_key.encrypt(
             msg,
             padding.OAEP(
@@ -65,11 +66,13 @@ class RSA(object):
         socket.send(bytesLength(ct))
         socket.sendall(ct)
 
-    def recv(self,socket):
+    def recv(self,socket,decode=True):
         length = int(socket.recv(8).decode())
         msg = socket.recv(length)
         msg = self.decrypt(msg)
-        return msg.decode()
+        if decode:
+            return msg.decode()
+        return msg
     
     def exchangeKeys(self,socket):
        ## On recieving a connection the sockets should create keys
@@ -79,7 +82,7 @@ class RSA(object):
         ## Recv publickey
         leng = int(socket.recv(8).decode())
         encKey = socket.recv(leng)
-        encKey = self.serialize_public(encKey)
+        encKey = serialize_public(encKey)
         return encKey
     
     def write_key_to_file(self,file):
@@ -90,7 +93,7 @@ class RSA(object):
     def read_key_from_file(self,file):
         try:
             with open(file,"rb") as f:
-                privKey = self.serialize_private(f.read())
+                privKey = serialize_private(f.read())
             return privKey
         except Exception as e:
             return False
@@ -247,3 +250,16 @@ def serialize_public(key):
 
 def serialize_private(key):
     return serialization.load_pem_private_key(key,password=None)
+
+def serialize_private_raw(key):
+    return X25519PrivateKey.from_private_bytes(key)
+
+def getSendablePrivKey(key):
+    return key.private_bytes(encoding=serialization.Encoding.Raw,
+                             format=serialization.PrivateFormat.Raw,
+                             encryption_algorithm=serialization.NoEncryption())
+    
+def getSendablePubKey(key):
+    return key.public_bytes(encoding=serialization.Encoding.PEM,
+                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)
+    

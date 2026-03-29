@@ -1,4 +1,4 @@
-from new_lib import RSA
+from new_lib import *
 import socket
 import getpass
 
@@ -6,7 +6,7 @@ DEBUG = True
 
 if DEBUG:
     IP = socket.gethostbyname(socket.gethostname())
-    IP = "10.41.63.155"
+    IP = "192.168.0.136"
 else:
     IP = "81.109.22.44"
 
@@ -51,15 +51,6 @@ def login(rsa,encKey,sock):
     username = input("Enter your username")
     pw = getpass.getpass("Enter your password")
     rsa.send("RETURNING USER",encKey,sock)
-    # privKey = rsa.read_key_from_file(username.upper()+".pem")
-    # if privKey == False:
-    #     print("Unable to find correct encryption key.\nIt should be named: "+username.upper()+".pem")
-    #     return login(rsa,encKey,sock)
-    # try:
-    #     pk =privKey.public_key()
-    # except:
-    #     print("Key found, but parsed incorrectly. Are you using a real RSA key?")
-    #     return login(rsa,encKey,sock)
     rsa.send("USER:"+username+":USER PW:"+pw+":PW",encKey,sock)
     user = rsa.recv(sock)
     if user == "NULL":
@@ -81,13 +72,22 @@ def createAccount(rsa,encKey,sock):
     response = rsa.recv(sock)
     if response == "SUCCESS":
         print("Account Created Succesfully, Generating Key Pair")
-    ## This is where we are gonna faff around with DH stuff 
-        # permPriv,permPub = createKeys()
-        # # write_key_to_file(permPriv,un.upper()+".pem")
-        # permPubString = getSendablePubKey(permPub)
-        # ## Below must be sent unencrypted as it is too big. This is fine as it is the pubkey
-        # sock.send(bytesLength(permPubString))
-        # sock.send(permPubString)
+        sender=DH_Sender()
+        reciever = DH_Reciever()
+        #Order is:
+        # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OPK
+        content = [sender.IKa,sender.EKa,reciever.SPKb,reciever.IKb,reciever.OPKb]
+        toWrite=[]
+        for item in content:
+            toWrite.append(getSendablePrivKey(item))
+        with open(un+".key", "wb+") as f:
+            for i in toWrite:
+                f.write(i+b"\n")
+        ## Send public keys to server
+        
+        for i in content:
+            print("Sending "+str(i))
+            rsa.send(getSendablePrivKey(i),encKey,sock)
         return
     else:
         print(response)

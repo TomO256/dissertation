@@ -39,8 +39,7 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users(
         username TEXT UNIQUE PRIMARY KEY,
-        password TEXT,
-        public_key TEXT)""")
+        password TEXT)""")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS messages(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +50,14 @@ def init_db():
         FOREIGN KEY (username_from) REFERENCES users(username),
         FOREIGN KEY (username_to) REFERENCES users(username)
         )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS keys(
+        username TEXT UNIQUE PRIMARY KEY,
+        recvSPK TEXT,
+        recvIK TEXT,
+        recvOPK TEXT,
+        sendIK TEXT,
+        sendEK TEXT)""")
     db.commit()
     return db,cursor
 
@@ -64,18 +71,21 @@ def addUser(username,password):
             return "Error Creating Account: That username is already taken"
     password = hash_pw(password)
     cursor.execute("INSERT INTO users (username,password) VALUES (?,?)",(username,password,))
+    cursor.execute("INSERT INTO keys (username) VALUES (?)",(username,))
     db.commit()
     db.close()
     return "SUCCESS"
 
-def addUserPubKey(username,pubKey):
+def addUserPubKey(username,rsa,socket):
+    keys=[]
+    for i in range(5):
+        keys.append(rsa.recv(socket,False))
     db,cursor = init_db()
-    cursor.execute("UPDATE users SET public_key=? WHERE UPPER(username)=?",(pubKey,username.upper(),))
+    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[0],keys[1],keys[2],keys[3],keys[4],username.upper(),))
     db.commit()
     db.close()
 
 def hash_pw(password):
-    print(password)
     return bcrypt.hashpw(password.encode(),bcrypt.gensalt())
 
 def check_pw(plaintext,hashed_pw):
@@ -91,16 +101,11 @@ def checkLogin(rsa,encKey,socket):
     if existing=="NEW USER":
         status = addUser(un,pw)
         rsa.send(status,encKey,socket)
-        # if status=="SUCCESS":
-        #     lenPubKey = socket.recv(8).decode()
-        #     permClientPub = socket.recv(int(lenPubKey))
-        #     addUserPubKey(un,permClientPub)
-        # return checkLogin(rsa,encKey,socket)
+        addUserPubKey(un,rsa,socket)
+
     db,cursor = init_db()
-    print(un)
     retrieved = cursor.execute("SELECT * FROM users WHERE UPPER(username)=?",(un.upper(),)).fetchall()
     db.close()
-    print(retrieved)
     for i in retrieved:
         if i[0].upper() == un.upper() and check_pw(pw,i[1]):
             rsa.send(un,encKey,socket)

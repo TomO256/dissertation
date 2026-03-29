@@ -1,3 +1,5 @@
 *.pem
 venv/
 __pycache__/
+*.key
+Server.db
