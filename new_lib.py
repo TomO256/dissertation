@@ -153,7 +153,7 @@ class DH_Reciever(object):
         #OPK is single time prekey, and deleted after use
         self.OPKb = X25519PrivateKey.generate()
         # Init initial DH ratchet
-        self.DHratchet = X25519PrivateKey.generate()
+        self.DHratchet = self.SPKb
 
     def x3dh(self,IKa_pub_key,EKa_pub_key):
         ## Perform requried 4 DH key exchanges
@@ -179,6 +179,7 @@ class DH_Reciever(object):
         self.send_ratchet = SymmRatchet(shared_send)
 
     def send(self,msg,socket):
+        
         key, iv = self.send_ratchet.next()
         ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
         toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
@@ -190,6 +191,7 @@ class DH_Reciever(object):
     def recv(self,socket):
         leng = socket.recv(8).decode()
         msg = socket.recv(int(leng))
+        # print("recv: "+str(msg))
         msg = msg.split(b":")
         self.dh_ratchet(RSA.serialize_public(None,msg[1]))
         key, iv = self.recv_ratchet.next()

@@ -36,12 +36,18 @@ for i in things_to_send:
     s.send(bytesLength(str(i)))
     s.sendall(i)
     time.sleep(0.2)
-    
-dh.x3dh(spk,ik,opk)
-dh.init_ratchets()
-pk = rsa.serialize_public(s.recv(int(s.recv(8).decode())))
-dh.dh_ratchet(pk)
 
+## Client now has keys required and server can shut down
+
+dh.x3dh(spk,ik,opk)
+# print("SK "+dh.sk.hex())
+dh.init_ratchets()
+dh.dh_ratchet(spk)
+# print("Intial ratchet: ", dh.send_ratchet.state)
+pk = dh.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
+                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)
+s.send(bytesLength(pk))
+s.sendall(pk)
 dh.send(b"hello",s)
 print(dh.recv(s))
 dh.send(b"Goodbye",s)
