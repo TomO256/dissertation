@@ -19,15 +19,15 @@ while True:
         conn.sendall(bytesLength(str(i)))
         conn.sendall(i)
         time.sleep(0.2)
-    ik = rsa.serialize_public(conn.recv(int(conn.recv(8).decode())))
-    ek = rsa.serialize_public(conn.recv(int(conn.recv(8).decode())))
+    ik = serialize_public(conn.recv(int(conn.recv(8).decode())))
+    ek = serialize_public(conn.recv(int(conn.recv(8).decode())))
 
     ## All keys should now be exchanged and server can 'go offline'
 
     dh.x3dh(ik,ek)
     # print("SK "+dh.sk.hex())
     dh.init_ratchets()
-    pk = rsa.serialize_public(conn.recv(int(conn.recv(8).decode())))
+    pk = serialize_public(conn.recv(int(conn.recv(8).decode())))
     print(dh.recv(conn))
     dh.send(b"hi",conn)
     print(dh.recv(conn))

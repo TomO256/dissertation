@@ -39,12 +39,6 @@ class RSA(object):
         self.priv_plain = self.__privKey.private_bytes(encoding=serialization.Encoding.PEM,
                              format=serialization.PrivateFormat.TraditionalOpenSSL,
                              encryption_algorithm=serialization.NoEncryption())
-    def serialize_public(self,key):
-        return serialization.load_pem_public_key(key)
-
-    def serialize_private(self,key):
-        return serialization.load_pem_private_key(key,password=None)
-
 
     def encrypt(self,msg,encryption_key):
         msg = msg.encode()
@@ -87,18 +81,6 @@ class RSA(object):
         encKey = socket.recv(leng)
         encKey = self.serialize_public(encKey)
         return encKey
-    
-    def send(self,msg,encKey,socket):
-        # print("Attempting to send: "+msg+" using key: "+str(encKey))
-        ct = self.encrypt(msg,encKey)
-        socket.send(bytesLength(ct))
-        socket.sendall(ct)
-    
-    def recv(self,socket):
-        length = int(socket.recv(8).decode())
-        msg = socket.recv(length)
-        msg = self.decrypt(msg)
-        return msg.decode()
     
     def write_key_to_file(self,file):
         with open(file, "+wb") as f:
@@ -193,7 +175,7 @@ class DH_Reciever(object):
         msg = socket.recv(int(leng))
         # print("recv: "+str(msg))
         msg = msg.split(b":")
-        self.dh_ratchet(RSA.serialize_public(None,msg[1]))
+        self.dh_ratchet(serialize_public(msg[1]))
         key, iv = self.recv_ratchet.next()
         final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
         return unpad(final)
@@ -240,7 +222,7 @@ class DH_Sender(object):
         msg = socket.recv(int(leng))
         msg = msg.split(b":")
         # print("Key found: "+str(msg[1]))
-        self.dh_ratchet(RSA.serialize_public(RSA,msg[1]))
+        self.dh_ratchet(serialize_public(msg[1]))
         key, iv = self.recv_ratchet.next()
         final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
         return unpad(final)
@@ -260,3 +242,8 @@ def enclosed(string,delim):
     except:
         return "ERROR"
     
+def serialize_public(key):
+    return serialization.load_pem_public_key(key)
+
+def serialize_private(key):
+    return serialization.load_pem_private_key(key,password=None)
