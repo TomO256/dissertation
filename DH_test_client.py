@@ -43,3 +43,6 @@ pk = rsa.serialize_public(s.recv(int(s.recv(8).decode())))
 dh.dh_ratchet(pk)
 
 dh.send(b"hello",s)
+print(dh.recv(s))
+dh.send(b"Goodbye",s)
+print(dh.recv(s))

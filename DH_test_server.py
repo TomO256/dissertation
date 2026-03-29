@@ -31,4 +31,7 @@ while True:
     conn.send(bytesLength(pk))
     conn.sendall(pk)
     print(dh.recv(conn))
+    dh.send(b"hi",conn)
+    print(dh.recv(conn))
+    dh.send(b"Bye",conn)
     break

@@ -184,6 +184,7 @@ class DH_Reciever(object):
         toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
                                         format=serialization.PublicFormat.SubjectPublicKeyInfo)
         socket.send(bytesLength(toSend))
+        # print("message sent: "+str(toSend))
         socket.send(toSend)
 
     def recv(self,socket):
@@ -236,7 +237,8 @@ class DH_Sender(object):
         leng = socket.recv(8).decode()
         msg = socket.recv(int(leng))
         msg = msg.split(b":")
-        self.dh_ratchet(RSA.serialize_public(msg[1]))
+        # print("Key found: "+str(msg[1]))
+        self.dh_ratchet(RSA.serialize_public(RSA,msg[1]))
         key, iv = self.recv_ratchet.next()
         final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
         return unpad(final)
