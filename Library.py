@@ -1,6 +1,6 @@
 ## PLAN
 
-## User comms with Server using RSA
+## User comms with Server using RSA + AES
 
 ## User comms with user using Signal Protocol DH Double Rachet
 
