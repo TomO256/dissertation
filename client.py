@@ -13,12 +13,15 @@ DEBUG = True
 
 if DEBUG:
     IP = socket.gethostbyname(socket.gethostname())
+    IP = "192.168.1.74"
 else:
     IP = "81.109.22.44"
 
 PORT = 2345
 
-    
+def signal_encrypt(string):
+    return string
+
 def menu():
     print("1. Send Message")
     print("2. Check Messages")
@@ -66,6 +69,7 @@ def mainloop(decKey,encKey,sock,user):
     mainloop(decKey,encKey,sock,user)
 
 def pwcheck(password):
+    return True
     if len(password) < 8:
         return False
     if password.upper() == password:
@@ -92,7 +96,13 @@ def createAccount(decKey,encKey,sock):
     send_encrypted_msg("USER:"+un+":USER PW:"+pw+":PW",encKey,sock)
     response = recv_encrypted_msg(decKey,sock)
     if response == "SUCCESS":
-        print("Account Created Succesfully, returning to Sign In")
+        print("Account Created Succesfully, Generating Key Pair")
+        permPriv,permPub = createKeys()
+        write_key_to_file(permPriv,un.upper()+".pem")
+        permPubString = getSendablePubKey(permPub)
+        ## Below must be sent unencrypted as it is too big. This is fine as it is the pubkey
+        sock.send(bytesLength(permPubString))
+        sock.send(permPubString)
         return
     else:
         print(response)
@@ -107,11 +117,20 @@ def login(decKey,encKey,sock):
     username = input("Enter your username")
     pw = getpass.getpass("Enter your password")
     send_encrypted_msg("RETURNING USER",encKey,sock)
+    privKey = read_key_from_file(username.upper()+".pem")
+    if privKey == False:
+        print("Unable to find correct encryption key.\nIt should be named: "+username.upper()+".pem")
+        return login(decKey,encKey,sock)
+    try:
+        pk =privKey.public_key()
+    except:
+        print("Key found, but parsed incorrectly. Are you using a real RSA key?")
+        return login(decKey,encKey,sock)
     send_encrypted_msg("USER:"+username+":USER PW:"+pw+":PW",encKey,sock)
     user = recv_encrypted_msg(decKey,sock)
     if user == "NULL":
         user=False
-    return user
+    return user, privKey
 
 def connect():
     s = socket.socket()
@@ -125,7 +144,7 @@ def connect():
         commCheck = recv_encrypted_msg(privKey,s)
         if commCheck == "HELLO":
             print("Established Secure Communication To Server")
-            user = login(privKey,encKey,s)
+            user, privKey = login(privKey,encKey,s)
             if user == False:
                 print("Authenticated Failed - Disconnecting")
                 return
