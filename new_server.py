@@ -1,5 +1,5 @@
 from final_lib import RSA, enclosed, AES_Enc
-import socket,bcrypt,sqlite3
+import socket,bcrypt,sqlite3,time
 
 DEBUG = True
 test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -51,12 +51,8 @@ def handleView(aes,user,conn):
     aes.send(str(count),conn)
     for msg in messages:
         keys = cursor.execute("SELECT sendIK, sendEK FROM keys WHERE username=?",(msg[1],)).fetchone()
-        aes.send(keys[0],conn)
-        aes.send(keys[1],conn)
-        aes.send(msg[4],conn)
-        aes.send(msg[3],conn)
-        aes.send(msg[5],conn)
-        aes.send(msg[1],conn)
+        aes.send(keys[0]+b"##"+keys[1]+b"##"+msg[4]+b"##"+msg[3],conn)
+        aes.send(msg[5]+"##"+msg[1],conn)
 
 
 def handleSend(aes,user,conn):

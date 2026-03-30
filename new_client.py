@@ -56,12 +56,14 @@ def viewMessages(aes,sock,user):
     dh.OPKb = privKeys[4]
     for i in range(int(numMessages)):
         dh.DHratchet = dh.SPKb
-        IKa = serialize_public(aes.recv(sock,False))
-        EKa = serialize_public(aes.recv(sock,False))
-        ratchet = serialize_public(aes.recv(sock,False))
-        message = aes.recv(sock,False)
-        timeStamp = aes.recv(sock)
-        userFrom = aes.recv(sock)
+        keys_and_msg = aes.recv(sock,False).split(b"##")
+        IKa = serialize_public(keys_and_msg[0])
+        EKa = serialize_public(keys_and_msg[1])
+        ratchet = serialize_public(keys_and_msg[2])
+        message = keys_and_msg[3]
+        ts_and_userFrom = aes.recv(sock).split("##")
+        timeStamp = ts_and_userFrom[0]
+        userFrom = ts_and_userFrom[1]
         ## Expecting Sender's Public Keys
         dh.x3dh(IKa,EKa)
         # print("SK "+dh.sk.hex())
