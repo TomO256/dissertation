@@ -1,19 +1,18 @@
 from Library import RSA, enclosed, AES_Enc
-import socket,bcrypt,sqlite3,time,threading,functools
+import socket,bcrypt,sqlite3,time,threading,functools,os
 
 DEBUG = True
-test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-test_socket.connect(("8.8.8.8",80))
+
 if DEBUG:
+    test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    test_socket.connect(("8.8.8.8",80))
     IP = test_socket.getsockname()[0]
     PORT = 2345
-test_socket.close()
+    test_socket.close()
 if not DEBUG:
     IP = "0.0.0.0"
     PORT = 7579
 print("Running on: "+IP+":"+str(PORT))
-
-
 
 def startup():
     init_db()
@@ -23,9 +22,10 @@ def startup():
     while True:
         conn, addr = s.accept()
         print("Connection at: "+str(addr))
-        t = threading.Thread(target=functools.partial(mainloop,conn))
+        t = threading.Thread(target=functools.partial(mainloop,conn,addr))
         t.start()
-def mainloop(conn):
+
+def mainloop(conn,addr):
     rsa = RSA()
     encKey = rsa.exchangeKeys(conn)
     ## Both client and server should now have three keys
@@ -41,8 +41,9 @@ def mainloop(conn):
             handleSend(aes,user,conn)
         elif operation=="VIEWMESSAGE":
             handleView(aes,user,conn)
-        else:
-            print("Unknown Action")
+        elif operation=="TERMINATE" and DEBUG==True:
+            os._exit(1)
+    print("Connection with "+str(addr)+" closed")
     conn.close()
 
 def handleView(aes,user,conn):
@@ -63,8 +64,9 @@ def handleSend(aes,user,conn):
     while not valid:
         toCheck = aes.recv(conn)
         userTo = toCheck.split(":")[1]
-        if existingUser(userTo):
-            aes.send("FOUND",conn)
+        userTo = existingUser(userTo)
+        if userTo:
+            aes.send(userTo,conn)
             valid = True
         else:
             aes.send("NOT FOUND",conn)
@@ -120,7 +122,7 @@ def existingUser(username):
     usrs = cursor.execute("SELECT * FROM users").fetchall()
     for user in usrs:
         if username.upper() == user[0].upper():
-            return True
+            return user[0]
     db.close()
     return False
 
@@ -165,6 +167,8 @@ def checkLogin(aes,socket):
     if existing=="NEW USER":
         status = addUser(un,pw)
         aes.send(status,socket)
+        if status!="SUCCESS":
+            return checkLogin(aes,socket)
         addUserPubKey(un,aes,socket)
         aes.send("Public Keys Uploaded Successfully",socket)
         return checkLogin(aes,socket)

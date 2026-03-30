@@ -5,9 +5,11 @@ import getpass
 DEBUG = True
 
 if DEBUG:
-    IP = socket.gethostbyname(socket.gethostname())
-    IP = "192.168.0.136"
+    test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    test_socket.connect(("8.8.8.8",80))
+    IP = test_socket.getsockname()[0]
     PORT = 2345
+    test_socket.close()
 else:
     IP = "81.109.22.44"
     PORT = 7579
@@ -19,12 +21,17 @@ def menu():
     print("1.\tSend Message")
     print("2.\tView Messages")
     print("0.\tQuit")
+    if DEBUG:
+        print("3.\tTERMINATE")
     choice = -1
     try:
         choice = int(input())
     except:
         pass
-    while choice not in [0,1,2]:
+    options = [0,1,2]
+    if DEBUG:
+        options.append(3)
+    while choice not in options:
         print("Please enter a valid option")
         try:
             choice = int(input())
@@ -40,8 +47,14 @@ def mainloop(aes,sock,user):
             sendMessage(aes,sock,user)
         elif choice==2:
             viewMessages(aes,sock,user)
+        elif choice==3:
+            print("Terminating Server")
+            aes.send("TERMINATE",sock)
+            sock.close()
+            return
         else:
             print("Closing Secure Connection")
+            aes.send("CLOSE",sock)
             sock.close()
             return
 
@@ -82,7 +95,8 @@ def sendMessage(aes,sock,user):
         aes.send("CHECKUSER:"+toSend,sock)
         status = aes.recv(sock)
         print(status)
-        if status == "FOUND":
+        if status.upper() == toSend.upper():
+            print("Sending Message to "+status)
             valid = True
         else:
             print("User "+toSend+" not found!")
