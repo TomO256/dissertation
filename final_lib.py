@@ -163,24 +163,20 @@ class DH_Reciever(object):
         shared_send = self.root_ratchet.next(dh_send)[0]
         self.send_ratchet = SymmRatchet(shared_send)
 
-    def send(self,msg,socket):
+    # def send(self,msg,socket):
         
-        key, iv = self.send_ratchet.next()
-        ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
-        toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
-                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)
-        socket.send(bytesLength(toSend))
-        # print("message sent: "+str(toSend))
-        socket.send(toSend)
+    #     key, iv = self.send_ratchet.next()
+    #     ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
+    #     toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
+    #                                     format=serialization.PublicFormat.SubjectPublicKeyInfo)
+    #     socket.send(bytesLength(toSend))
+    #     # print("message sent: "+str(toSend))
+    #     socket.send(toSend)
 
-    def recv(self,socket):
-        leng = socket.recv(8).decode()
-        msg = socket.recv(int(leng))
-        # print("recv: "+str(msg))
-        msg = msg.split(b":")
-        self.dh_ratchet(serialize_public(msg[1]))
+    def decrypt(self,msg,ratchet):
+        self.dh_ratchet(ratchet)
         key, iv = self.recv_ratchet.next()
-        final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
+        final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg)
         return unpad(final)
 
 class DH_Sender(object):
@@ -215,19 +211,19 @@ class DH_Sender(object):
     def encrypt(self,msg):
         key, iv = self.send_ratchet.next()
         ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
-        toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
+        ratchet = self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
                                         format=serialization.PublicFormat.SubjectPublicKeyInfo)
-        return toSend
+        return ct,ratchet
 
-    def recv(self,socket):
-        leng = socket.recv(8).decode()
-        msg = socket.recv(int(leng))
-        msg = msg.split(b":")
-        # print("Key found: "+str(msg[1]))
-        self.dh_ratchet(serialize_public(msg[1]))
-        key, iv = self.recv_ratchet.next()
-        final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
-        return unpad(final)
+    # def recv(self,socket):
+    #     leng = socket.recv(8).decode()
+    #     msg = socket.recv(int(leng))
+    #     msg = msg.split(b":")
+    #     # print("Key found: "+str(msg[1]))
+    #     self.dh_ratchet(serialize_public(msg[1]))
+    #     key, iv = self.recv_ratchet.next()
+    #     final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
+    #     return unpad(final)
 ######################## MISC FUNCTIONS ########################
 
 def bytesLength(string):

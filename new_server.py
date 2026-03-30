@@ -31,12 +31,33 @@ def startup():
             return
         user = checkLogin(rsa,encKey,conn)
         rsa.send(user,encKey,conn)
-        operation = rsa.recv(conn)
-        if operation=="SENDMESSAGE":
-            handleSend(rsa,user,encKey,conn)
-        else:
-            print("Unknown Action")
+        operation = None
+        while operation!="CLOSE":
+            operation = rsa.recv(conn)
+            if operation=="SENDMESSAGE":
+                handleSend(rsa,user,encKey,conn)
+            elif operation=="VIEWMESSAGE":
+                handleView(rsa,user,encKey,conn)
+            else:
+                print("Unknown Action")
         conn.close()
+
+def handleView(rsa,user,encKey,conn):
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
+    print(user)
+    messages = cursor.execute("SELECT * FROM messages WHERE username_to=?",(user,)).fetchall()
+    count = len(messages)
+    rsa.send(str(count),encKey,conn)
+    for msg in messages:
+        keys = cursor.execute("SELECT sendIK, sendEK FROM keys WHERE username=?",(msg[1],)).fetchone()
+        rsa.send(keys[0],encKey,conn)
+        rsa.send(keys[1],encKey,conn)
+        rsa.send(msg[4],encKey,conn)
+        rsa.send(msg[3],encKey,conn)
+        rsa.send(msg[5],encKey,conn)
+        rsa.send(msg[1],encKey,conn)
+
 
 def handleSend(rsa,user,rsaEncKey,conn):
     valid = False
@@ -53,10 +74,8 @@ def handleSend(rsa,user,rsaEncKey,conn):
     keys = cursor.execute("SELECT recvSPK, recvIK, recvOPK FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
     for i in keys:
         rsa.send(i,rsaEncKey,conn)
-    encryptedMsg = rsa.recv(conn,False)
-    encryptedMsg = encryptedMsg.split(b":")
-    msg = encryptedMsg[0]
-    ratchet = encryptedMsg[1]
+    msg = rsa.recv(conn,False)
+    ratchet = rsa.recv(conn,False)
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
     cursor.execute("INSERT INTO messages (username_from,username_to,contents,ratchet) VALUES (?,?,?,?)",(user,userTo,msg,ratchet))
@@ -124,9 +143,11 @@ def addUserPubKey(username,rsa,socket):
     keys=[]
     for i in range(5):
         keys.append(rsa.recv(socket,False))
+    #Order is:
+    # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OP
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[0],keys[1],keys[2],keys[3],keys[4],username.upper(),))
+    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[2],keys[3],keys[4],keys[0],keys[1],username.upper(),))
     db.commit()
     db.close()
 
@@ -157,7 +178,7 @@ def checkLogin(rsa,encKey,socket):
     for i in retrieved:
         if i[0].upper() == un.upper() and check_pw(pw,i[1]):
             rsa.send(un,encKey,socket)
-            return un
+            return i[0]
     print("User validation failed")
     rsa.send("NULL",encKey,socket)
     return checkLogin(rsa,encKey,socket)

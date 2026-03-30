@@ -37,10 +37,43 @@ def mainloop(rsa,rsaEncKey,sock,user):
         if choice==1:
             sendMessage(rsa,rsaEncKey,sock,user)
         elif choice==2:
-            viewMessages()
+            viewMessages(rsa,rsaEncKey,sock,user)
         else:
             print("Closing Secure Connection")
-            sock.exit()
+            sock.close()
+            return
+
+def viewMessages(rsa,rsaEncKey,sock,user):
+    rsa.send("VIEWMESSAGE",rsaEncKey,sock)
+    numMessages = rsa.recv(sock)
+    print("You have received: "+str(numMessages)+" messages")
+    dh = DH_Reciever()
+    privKeys = getPrivKeys(user)
+    dh.SPKb = privKeys[2]
+    dh.IKb = privKeys[3]
+    dh.OPKb = privKeys[4]
+    dh.DHratchet = dh.SPKb
+    for i in range(int(numMessages)):
+        IKa = serialize_public(rsa.recv(sock,False))
+        EKa = serialize_public(rsa.recv(sock,False))
+        ratchet = serialize_public(rsa.recv(sock,False))
+        message = rsa.recv(sock,False)
+        timeStamp = rsa.recv(sock)
+        userFrom = rsa.recv(sock)
+        ## Expecting Sender's Public Keys
+        print("Expecting Sender's Public Keys")
+        print("IKa:"+str((IKa.public_bytes(encoding=serialization.Encoding.PEM,
+                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
+        print("EKa:"+str((EKa.public_bytes(encoding=serialization.Encoding.PEM,
+                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
+        dh.x3dh(IKa,EKa)
+        # print("SK "+dh.sk.hex())
+        dh.init_ratchets()
+        msg = dh.decrypt(message,ratchet)
+        print(msg)
+        print("MESSAGE FROM: "+userFrom+" at "+timeStamp+" : "+msg.decode())
+        
+        
         
 def sendMessage(rsa,rsaEncKey,sock,user):
     rsa.send("SENDMESSAGE",rsaEncKey,sock)
@@ -69,40 +102,46 @@ def sendMessage(rsa,rsaEncKey,sock,user):
     ## Get message to send
     msg = input("Enter the message to send:\n")
     ## Get User Keys
+    privKeys = getPrivKeys(user)
+    ## Create Ratchet
+    dh = DH_Sender()
+    dh.IKa = privKeys[0]
+    dh.EKa = privKeys[1]
+    print("Expecting Sender's Public Keys")
+    print("spk: "+str((spk.public_bytes(encoding=serialization.Encoding.PEM,
+                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
+    print("ik: "+str((ik.public_bytes(encoding=serialization.Encoding.PEM,
+                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
+    print("opk: "+str((opk.public_bytes(encoding=serialization.Encoding.PEM,
+                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
+
+    dh.x3dh(spk,ik,opk)
+    print("SK "+dh.sk.hex())
+    dh.init_ratchets()
+    dh.dh_ratchet(spk)
+    ct,ratchet = dh.encrypt(msg.encode())
+    rsa.send(ct,rsaEncKey,sock)
+    rsa.send(ratchet,rsaEncKey,sock)
+    ## Send encrypted message to server to hold
+    
+def getPrivKeys(user):
+    '''
+    Private keys returned from file 'user.key' in format:
+    0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OPK
+    '''
+    
+    ##TODO: Make this break out of main program safely when file key not found
     privKeys = []
     try:
         with open(user+".key","rb") as f:
             contents = f.read()
-        contents = contents.split(b":")
+        contents = contents.split(b"###")
         for key in contents[:-1]:
             privKeys.append(serialize_private_raw(key))
-    
-    # privKeys: 0 IK, 1: EK        
+        return privKeys        
     except FileExistsError:
         print("Unable to find "+user+".key file, it must be in this directory")
-        
-    
-    ## Create Ratchet
-    dh = DH_Sender()
-    dh.IKa = privKeys[0]
-    dh.Eka = privKeys[1]
-    dh.x3dh(spk,ik,opk)
-    dh.init_ratchets()
-    dh.dh_ratchet(spk)
-    # pk = dh.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
-    #                                 format=serialization.PublicFormat.SubjectPublicKeyInfo)
-    ct = dh.encrypt(msg.encode())
-    rsa.send(ct,rsaEncKey,sock)
-    ## Send encrypted message to server to hold
-    pass
-    
-def viewMessages():
-    ## Get senders keys
-    
-    ## Create ratchet
-    
-    ## Decrypt encrypted message
-    pass
+        return False
     
     
 def connect():
@@ -173,11 +212,9 @@ def createAccount(rsa,encKey,sock):
             toWrite.append(getSendablePrivKey(item))
         with open(un+".key", "wb+") as f:
             for i in toWrite:
-                f.write(i+b":")
-        ## Send public keys to server
+                f.write(i+b"###")
 
         for i in content:
-            print("Sending "+str(i))
             rsa.send(getSendablePubKey(i),encKey,sock)
         response = rsa.recv(sock)
         print(response)
