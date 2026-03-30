@@ -212,13 +212,12 @@ class DH_Sender(object):
         shared_send = self.root_ratchet.next(dh_send)[0]
         self.send_ratchet = SymmRatchet(shared_send)
 
-    def send(self,msg,socket):
+    def encrypt(self,msg):
         key, iv = self.send_ratchet.next()
         ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
         toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
                                         format=serialization.PublicFormat.SubjectPublicKeyInfo)
-        socket.send(bytesLength(toSend))
-        socket.send(toSend)
+        return toSend
 
     def recv(self,socket):
         leng = socket.recv(8).decode()

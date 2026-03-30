@@ -1,4 +1,4 @@
-from new_lib import *
+from final_lib import *
 import socket
 import getpass
 
@@ -12,10 +12,99 @@ else:
 
 PORT = 2345
 
-def login(x,y,z):
-    print("working :)")
-    return False
-
+def menu():
+    print("----- M E N U ------")
+    print("1.\tSend Message")
+    print("2.\tView Messages")
+    print("0.\tQuit")
+    choice = -1
+    try:
+        choice = int(input())
+    except:
+        pass
+    while choice not in [0,1,2]:
+        print("Please enter a valid option")
+        try:
+            choice = int(input())
+        except:
+            pass
+    return choice
+        
+        
+def mainloop(rsa,rsaEncKey,sock,user):
+    while 1:
+        choice = menu()
+        if choice==1:
+            sendMessage(rsa,rsaEncKey,sock,user)
+        elif choice==2:
+            viewMessages()
+        else:
+            print("Closing Secure Connection")
+            sock.exit()
+        
+def sendMessage(rsa,rsaEncKey,sock,user):
+    rsa.send("SENDMESSAGE",rsaEncKey,sock)
+    ## Select another user
+    valid = False
+    while not valid:
+        toSend = input("Please enter the username of the user to send a message to")
+        rsa.send("CHECKUSER:"+toSend,rsaEncKey,sock)
+        status = rsa.recv(sock)
+        print(status)
+        if status == "FOUND":
+            valid = True
+        else:
+            print("User "+toSend+" not found!")
+    # When the user is found it prompts the keys to be sent
+    ## Get user's recieving keys
+    # Keys are in order SPK, IK, OPK
+    keys = []
+    for i in range(3):
+        keys.append(rsa.recv(sock,False))
+    for counter, key in enumerate(keys):
+        keys[counter] = serialize_public(key)
+    spk = keys[0]
+    ik = keys[1]
+    opk = keys[2]
+    ## Get message to send
+    msg = input("Enter the message to send:\n")
+    ## Get User Keys
+    privKeys = []
+    try:
+        with open(user+".key","rb") as f:
+            contents = f.read()
+        contents = contents.split(b":")
+        for key in contents[:-1]:
+            privKeys.append(serialize_private_raw(key))
+    
+    # privKeys: 0 IK, 1: EK        
+    except FileExistsError:
+        print("Unable to find "+user+".key file, it must be in this directory")
+        
+    
+    ## Create Ratchet
+    dh = DH_Sender()
+    dh.IKa = privKeys[0]
+    dh.Eka = privKeys[1]
+    dh.x3dh(spk,ik,opk)
+    dh.init_ratchets()
+    dh.dh_ratchet(spk)
+    # pk = dh.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
+    #                                 format=serialization.PublicFormat.SubjectPublicKeyInfo)
+    ct = dh.encrypt(msg.encode())
+    rsa.send(ct,rsaEncKey,sock)
+    ## Send encrypted message to server to hold
+    pass
+    
+def viewMessages():
+    ## Get senders keys
+    
+    ## Create ratchet
+    
+    ## Decrypt encrypted message
+    pass
+    
+    
 def connect():
     s = socket.socket()
     s.settimeout(20)
@@ -32,7 +121,9 @@ def connect():
             if user == False:
                 print("Authenticated Failed - Disconnecting")
                 return
-            # mainloop(privKey,encKey,s,user)
+            un = rsa.recv(s)
+            print("Login Success: Welcome "+un)
+            mainloop(rsa,encKey,s,user)
             return
         elif commCheck == "FAIL":
             print("Failed to Establish Secure Communication on Client Side - Disconnecting")
@@ -82,12 +173,14 @@ def createAccount(rsa,encKey,sock):
             toWrite.append(getSendablePrivKey(item))
         with open(un+".key", "wb+") as f:
             for i in toWrite:
-                f.write(i+b"\n")
+                f.write(i+b":")
         ## Send public keys to server
-        
+
         for i in content:
             print("Sending "+str(i))
-            rsa.send(getSendablePrivKey(i),encKey,sock)
+            rsa.send(getSendablePubKey(i),encKey,sock)
+        response = rsa.recv(sock)
+        print(response)
         return
     else:
         print(response)

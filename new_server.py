@@ -11,6 +11,7 @@ print("Running on: "+IP)
 
 PORT = 2345
 def startup():
+    init_db()
     s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     s.bind((IP,PORT))
     s.listen(5)
@@ -29,10 +30,40 @@ def startup():
         if check!="HELLO":
             return
         user = checkLogin(rsa,encKey,conn)
-        print("success")
+        rsa.send(user,encKey,conn)
+        operation = rsa.recv(conn)
+        if operation=="SENDMESSAGE":
+            handleSend(rsa,user,encKey,conn)
+        else:
+            print("Unknown Action")
         conn.close()
 
-
+def handleSend(rsa,user,rsaEncKey,conn):
+    valid = False
+    while not valid:
+        toCheck = rsa.recv(conn)
+        userTo = toCheck.split(":")[1]
+        if existingUser(userTo):
+            rsa.send("FOUND",rsaEncKey,conn)
+            valid = True
+        else:
+            rsa.send("NOT FOUND",rsaEncKey,conn)
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
+    keys = cursor.execute("SELECT recvSPK, recvIK, recvOPK FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
+    for i in keys:
+        rsa.send(i,rsaEncKey,conn)
+    encryptedMsg = rsa.recv(conn,False)
+    encryptedMsg = encryptedMsg.split(b":")
+    msg = encryptedMsg[0]
+    ratchet = encryptedMsg[1]
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO messages (username_from,username_to,contents,ratchet) VALUES (?,?,?,?)",(user,userTo,msg,ratchet))
+    db.commit()
+    db.close()
+    print("WOOOOOOO")
+    
 def init_db():
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
@@ -46,6 +77,7 @@ def init_db():
         username_from TEXT,
         username_to TEXT,
         contents TEXT,
+        ratchet TEXT,
         sent DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (username_from) REFERENCES users(username),
         FOREIGN KEY (username_to) REFERENCES users(username)
@@ -57,18 +89,30 @@ def init_db():
         recvIK TEXT,
         recvOPK TEXT,
         sendIK TEXT,
-        sendEK TEXT)""")
+        sendEK TEXT,
+        FOREIGN KEY (username) REFERENCES users(username))""")
     db.commit()
-    return db,cursor
+    db.close()
+    return True
 
+def existingUser(username):
+    # print("Trying to find "+username+" in the db")
+    ## Check if a user exists in the database
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
+    usrs = cursor.execute("SELECT * FROM users").fetchall()
+    for user in usrs:
+        if username.upper() == user[0].upper():
+            return True
+    db.close()
+    return False
 
 def addUser(username,password):
     ##TODO: PW check against common db
-    db,cursor = init_db()
-    users = cursor.execute("SELECT * FROM users").fetchall()
-    for user in users:
-        if username.upper() == user[0].upper():
-            return "Error Creating Account: That username is already taken"
+    if existingUser(username):
+        return "Error Creating Account: That username is already taken"
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
     password = hash_pw(password)
     cursor.execute("INSERT INTO users (username,password) VALUES (?,?)",(username,password,))
     cursor.execute("INSERT INTO keys (username) VALUES (?)",(username,))
@@ -80,7 +124,8 @@ def addUserPubKey(username,rsa,socket):
     keys=[]
     for i in range(5):
         keys.append(rsa.recv(socket,False))
-    db,cursor = init_db()
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
     cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[0],keys[1],keys[2],keys[3],keys[4],username.upper(),))
     db.commit()
     db.close()
@@ -102,8 +147,11 @@ def checkLogin(rsa,encKey,socket):
         status = addUser(un,pw)
         rsa.send(status,encKey,socket)
         addUserPubKey(un,rsa,socket)
-
-    db,cursor = init_db()
+        rsa.send("Public Keys Uploaded Successfully",encKey,socket)
+        return checkLogin(rsa,encKey,socket)
+        
+    db = sqlite3.connect("Server.db")
+    cursor = db.cursor()
     retrieved = cursor.execute("SELECT * FROM users WHERE UPPER(username)=?",(un.upper(),)).fetchall()
     db.close()
     for i in retrieved:
@@ -112,7 +160,8 @@ def checkLogin(rsa,encKey,socket):
             return un
     print("User validation failed")
     rsa.send("NULL",encKey,socket)
-    return False, False
+    return checkLogin(rsa,encKey,socket)
+    
 
 
 
