@@ -1,4 +1,4 @@
-from new_lib import RSA, enclosed
+from final_lib import RSA, enclosed, AES_Enc
 import socket,bcrypt,sqlite3
 
 DEBUG = True
@@ -9,9 +9,9 @@ if DEBUG:
     PORT = 2345
 test_socket.close()
 if not DEBUG:
-    IP = "81.109.22.44"
-    PORT = "7579"
-print("Running on: "+IP)
+    IP = "0.0.0.0"
+    PORT = 7579
+print("Running on: "+IP+":"+str(PORT))
 
 
 
@@ -28,65 +28,61 @@ def startup():
         encKey = rsa.exchangeKeys(conn)
         ## Both client and server should now have three keys
         msgToSend = "HELLO"
-        check = rsa.recv(conn)
-        if check!="HELLO":
-            msgToSend="FAIL"
-        rsa.send(msgToSend,encKey,conn)
-        if check!="HELLO":
-            return
-        user = checkLogin(rsa,encKey,conn)
-        rsa.send(user,encKey,conn)
+        aes_key = rsa.recv(conn)
+        aes = AES_Enc(aes_key)
+        aes.send("HELLO",conn)
+        user = checkLogin(aes,conn)
+        aes.send(user,conn)
         operation = None
         while operation!="CLOSE":
-            operation = rsa.recv(conn)
+            operation = aes.recv(conn)
             if operation=="SENDMESSAGE":
-                handleSend(rsa,user,encKey,conn)
+                handleSend(aes,user,conn)
             elif operation=="VIEWMESSAGE":
-                handleView(rsa,user,encKey,conn)
+                handleView(aes,user,conn)
             else:
                 print("Unknown Action")
         conn.close()
 
-def handleView(rsa,user,encKey,conn):
+def handleView(aes,user,conn):
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
     print(user)
     messages = cursor.execute("SELECT * FROM messages WHERE username_to=?",(user,)).fetchall()
     count = len(messages)
-    rsa.send(str(count),encKey,conn)
+    aes.send(str(count),conn)
     for msg in messages:
         keys = cursor.execute("SELECT sendIK, sendEK FROM keys WHERE username=?",(msg[1],)).fetchone()
-        rsa.send(keys[0],encKey,conn)
-        rsa.send(keys[1],encKey,conn)
-        rsa.send(msg[4],encKey,conn)
-        rsa.send(msg[3],encKey,conn)
-        rsa.send(msg[5],encKey,conn)
-        rsa.send(msg[1],encKey,conn)
+        aes.send(keys[0],conn)
+        aes.send(keys[1],conn)
+        aes.send(msg[4],conn)
+        aes.send(msg[3],conn)
+        aes.send(msg[5],conn)
+        aes.send(msg[1],conn)
 
 
-def handleSend(rsa,user,rsaEncKey,conn):
+def handleSend(aes,user,conn):
     valid = False
     while not valid:
-        toCheck = rsa.recv(conn)
+        toCheck = aes.recv(conn)
         userTo = toCheck.split(":")[1]
         if existingUser(userTo):
-            rsa.send("FOUND",rsaEncKey,conn)
+            aes.send("FOUND",conn)
             valid = True
         else:
-            rsa.send("NOT FOUND",rsaEncKey,conn)
+            aes.send("NOT FOUND",conn)
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
     keys = cursor.execute("SELECT recvSPK, recvIK, recvOPK FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
     for i in keys:
-        rsa.send(i,rsaEncKey,conn)
-    msg = rsa.recv(conn,False)
-    ratchet = rsa.recv(conn,False)
+        aes.send(i,conn)
+    msg = aes.recv(conn,False)
+    ratchet = aes.recv(conn,False)
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
     cursor.execute("INSERT INTO messages (username_from,username_to,contents,ratchet) VALUES (?,?,?,?)",(user,userTo,msg,ratchet))
     db.commit()
     db.close()
-    print("WOOOOOOO")
     
 def init_db():
     db = sqlite3.connect("Server.db")
@@ -144,10 +140,10 @@ def addUser(username,password):
     db.close()
     return "SUCCESS"
 
-def addUserPubKey(username,rsa,socket):
+def addUserPubKey(username,aes,socket):
     keys=[]
     for i in range(5):
-        keys.append(rsa.recv(socket,False))
+        keys.append(aes.recv(socket,False))
     #Order is:
     # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OP
     db = sqlite3.connect("Server.db")
@@ -163,18 +159,18 @@ def check_pw(plaintext,hashed_pw):
     return bcrypt.checkpw(plaintext.encode(),hashed_pw)
 
 
-def checkLogin(rsa,encKey,socket):
-    existing = rsa.recv(socket)
-    unpw = rsa.recv(socket)
+def checkLogin(aes,socket):
+    existing = aes.recv(socket)
+    unpw = aes.recv(socket)
     un = enclosed(unpw,"USER")
     pw = enclosed(unpw,"PW")
     ## Match against db
     if existing=="NEW USER":
         status = addUser(un,pw)
-        rsa.send(status,encKey,socket)
-        addUserPubKey(un,rsa,socket)
-        rsa.send("Public Keys Uploaded Successfully",encKey,socket)
-        return checkLogin(rsa,encKey,socket)
+        aes.send(status,socket)
+        addUserPubKey(un,aes,socket)
+        aes.send("Public Keys Uploaded Successfully",socket)
+        return checkLogin(aes,socket)
         
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
@@ -182,14 +178,10 @@ def checkLogin(rsa,encKey,socket):
     db.close()
     for i in retrieved:
         if i[0].upper() == un.upper() and check_pw(pw,i[1]):
-            rsa.send(un,encKey,socket)
+            aes.send(un,socket)
             return i[0]
     print("User validation failed")
-    rsa.send("NULL",encKey,socket)
-    return checkLogin(rsa,encKey,socket)
+    aes.send("NULL",socket)
+    return checkLogin(aes,socket)
     
-
-
-
-
 startup()

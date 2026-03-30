@@ -33,21 +33,21 @@ def menu():
     return choice
         
         
-def mainloop(rsa,rsaEncKey,sock,user):
+def mainloop(aes,sock,user):
     while 1:
         choice = menu()
         if choice==1:
-            sendMessage(rsa,rsaEncKey,sock,user)
+            sendMessage(aes,sock,user)
         elif choice==2:
-            viewMessages(rsa,rsaEncKey,sock,user)
+            viewMessages(aes,sock,user)
         else:
             print("Closing Secure Connection")
             sock.close()
             return
 
-def viewMessages(rsa,rsaEncKey,sock,user):
-    rsa.send("VIEWMESSAGE",rsaEncKey,sock)
-    numMessages = rsa.recv(sock)
+def viewMessages(aes,sock,user):
+    aes.send("VIEWMESSAGE",sock)
+    numMessages = aes.recv(sock)
     print("You have received: "+str(numMessages)+" messages")
     dh = DH_Reciever()
     privKeys = getPrivKeys(user)
@@ -56,12 +56,12 @@ def viewMessages(rsa,rsaEncKey,sock,user):
     dh.OPKb = privKeys[4]
     dh.DHratchet = dh.SPKb
     for i in range(int(numMessages)):
-        IKa = serialize_public(rsa.recv(sock,False))
-        EKa = serialize_public(rsa.recv(sock,False))
-        ratchet = serialize_public(rsa.recv(sock,False))
-        message = rsa.recv(sock,False)
-        timeStamp = rsa.recv(sock)
-        userFrom = rsa.recv(sock)
+        IKa = serialize_public(aes.recv(sock,False))
+        EKa = serialize_public(aes.recv(sock,False))
+        ratchet = serialize_public(aes.recv(sock,False))
+        message = aes.recv(sock,False)
+        timeStamp = aes.recv(sock)
+        userFrom = aes.recv(sock)
         ## Expecting Sender's Public Keys
         dh.x3dh(IKa,EKa)
         # print("SK "+dh.sk.hex())
@@ -71,14 +71,14 @@ def viewMessages(rsa,rsaEncKey,sock,user):
         
         
         
-def sendMessage(rsa,rsaEncKey,sock,user):
-    rsa.send("SENDMESSAGE",rsaEncKey,sock)
+def sendMessage(aes,sock,user):
+    aes.send("SENDMESSAGE",sock)
     ## Select another user
     valid = False
     while not valid:
         toSend = input("Please enter the username of the user to send a message to")
-        rsa.send("CHECKUSER:"+toSend,rsaEncKey,sock)
-        status = rsa.recv(sock)
+        aes.send("CHECKUSER:"+toSend,sock)
+        status = aes.recv(sock)
         print(status)
         if status == "FOUND":
             valid = True
@@ -89,7 +89,7 @@ def sendMessage(rsa,rsaEncKey,sock,user):
     # Keys are in order SPK, IK, OPK
     keys = []
     for i in range(3):
-        keys.append(rsa.recv(sock,False))
+        keys.append(aes.recv(sock,False))
     for counter, key in enumerate(keys):
         keys[counter] = serialize_public(key)
     spk = keys[0]
@@ -108,8 +108,8 @@ def sendMessage(rsa,rsaEncKey,sock,user):
     dh.init_ratchets()
     dh.dh_ratchet(spk)
     ct,ratchet = dh.encrypt(msg.encode())
-    rsa.send(ct,rsaEncKey,sock)
-    rsa.send(ratchet,rsaEncKey,sock)
+    aes.send(ct,sock)
+    aes.send(ratchet,sock)
     ## Send encrypted message to server to hold
     
 def getPrivKeys(user):
@@ -140,17 +140,18 @@ def connect():
         rsa = RSA()
         encKey = rsa.exchangeKeys(s)
         ## Both client and server should now have three keys each
-        rsa.send("HELLO",encKey,s)
-        commCheck = rsa.recv(s)
+        aes = AES_Enc()
+        rsa.send(aes.getKey(),encKey,s)
+        commCheck = aes.recv(s)
         if commCheck == "HELLO":
             print("Established Secure Communication To Server")
-            user = login(rsa,encKey,s)
+            user = login(aes,s)
             if user == False:
                 print("Authenticated Failed - Disconnecting")
                 return
-            un = rsa.recv(s)
+            un = aes.recv(s)
             print("Login Success: Welcome "+un)
-            mainloop(rsa,encKey,s,user)
+            mainloop(aes,s,user)
             return
         elif commCheck == "FAIL":
             print("Failed to Establish Secure Communication on Client Side - Disconnecting")
@@ -161,21 +162,21 @@ def connect():
     except ConnectionRefusedError:
         print("SERVER ERROR - Unable to find server at "+IP+":"+str(PORT)+"\nPlease check the server is running")
 
-def login(rsa,encKey,sock):
+def login(aes,sock):
     accountExists = input("Do you want to create a new account? (y/N)\n")
     if accountExists.upper()=="Y" or accountExists.upper()=="YES":
-        createAccount(rsa,encKey,sock)
-        return login(rsa,encKey,sock)
+        createAccount(aes,sock)
+        return login(aes,sock)
     username = input("Enter your username")
     pw = getpass.getpass("Enter your password")
-    rsa.send("RETURNING USER",encKey,sock)
-    rsa.send("USER:"+username+":USER PW:"+pw+":PW",encKey,sock)
-    user = rsa.recv(sock)
+    aes.send("RETURNING USER",sock)
+    aes.send("USER:"+username+":USER PW:"+pw+":PW",sock)
+    user = aes.recv(sock)
     if user == "NULL":
         user=False
     return user
 
-def createAccount(rsa,encKey,sock):
+def createAccount(aes,sock):
     un = input("Enter the username you wish to use\n")
     pw=getpass.getpass("Enter your chosen password\n")
     while pwcheck(pw) == False:
@@ -185,9 +186,9 @@ def createAccount(rsa,encKey,sock):
     if pw!=pwconfirm:
         print("The passwords do not match, returning to Sign In")
         return
-    rsa.send("NEW USER",encKey,sock)
-    rsa.send("USER:"+un+":USER PW:"+pw+":PW",encKey,sock)
-    response = rsa.recv(sock)
+    aes.send("NEW USER",sock)
+    aes.send("USER:"+un+":USER PW:"+pw+":PW",sock)
+    response = aes.recv(sock)
     if response == "SUCCESS":
         print("Account Created Succesfully, Generating Key Pair")
         sender=DH_Sender()
@@ -203,8 +204,8 @@ def createAccount(rsa,encKey,sock):
                 f.write(i+b"###")
 
         for i in content:
-            rsa.send(getSendablePubKey(i),encKey,sock)
-        response = rsa.recv(sock)
+            aes.send(getSendablePubKey(i),sock)
+        response = aes.recv(sock)
         print(response)
         return
     else:

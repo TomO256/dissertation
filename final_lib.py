@@ -10,7 +10,41 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.fernet import Fernet
 from Crypto.Cipher import AES # type: ignore
+
+#################### A E S ############################
+class AES_Enc(object):
+    def __init__(self,key=Fernet.generate_key()):
+        self.__key = key
+        self.cipher = Fernet(key)
+    def encrypt(self,msg):
+        if type(msg) !=bytes:
+            msg = msg.encode()
+        return self.cipher.encrypt(msg)
+    def decrypt(self,msg):
+        return self.cipher.decrypt(msg)
+    def getKey(self):
+        return self.__key
+    
+    def setKey(self,key):
+        self.__key = key
+        self.cipher = Fernet(key)
+        
+    def send(self,msg,socket):
+        # print("Attempting to send: "+msg+" using key: "+str(encKey))
+        ct = self.encrypt(msg)
+        socket.send(bytesLength(ct))
+        socket.sendall(ct)
+
+    def recv(self,socket,decode=True):
+        length = int(socket.recv(8).decode())
+        msg = socket.recv(length)
+        msg = self.decrypt(msg)
+        if decode:
+            return msg.decode()
+        return msg
+    
 
 #################### R S A ############################
 class RSA(object):
@@ -75,7 +109,7 @@ class RSA(object):
         return msg
     
     def exchangeKeys(self,socket):
-       ## On recieving a connection the sockets should create keys
+        ## On recieving a connection the sockets should create keys
         ## Send PublicKey
         socket.send(bytesLength(self.pub_plain))
         socket.sendall(self.pub_plain)
@@ -84,19 +118,6 @@ class RSA(object):
         encKey = socket.recv(leng)
         encKey = serialize_public(encKey)
         return encKey
-    
-    def write_key_to_file(self,file):
-        with open(file, "+wb") as f:
-            f.write(self.__privKey)
-        return
-
-    def read_key_from_file(self,file):
-        try:
-            with open(file,"rb") as f:
-                privKey = serialize_private(f.read())
-            return privKey
-        except Exception as e:
-            return False
         
 
 
