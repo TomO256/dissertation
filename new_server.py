@@ -53,6 +53,7 @@ def handleView(aes,user,conn):
         keys = cursor.execute("SELECT sendIK, sendEK FROM keys WHERE username=?",(msg[1],)).fetchone()
         aes.send(keys[0]+b"##"+keys[1]+b"##"+msg[4]+b"##"+msg[3],conn)
         aes.send(msg[5]+"##"+msg[1],conn)
+        time.sleep(0.1)
 
 
 def handleSend(aes,user,conn):
