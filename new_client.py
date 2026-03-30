@@ -2,7 +2,7 @@ from final_lib import *
 import socket
 import getpass
 
-DEBUG = False
+DEBUG = True
 
 if DEBUG:
     IP = socket.gethostbyname(socket.gethostname())

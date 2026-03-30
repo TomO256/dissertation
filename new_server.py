@@ -1,5 +1,5 @@
 from final_lib import RSA, enclosed, AES_Enc
-import socket,bcrypt,sqlite3,time
+import socket,bcrypt,sqlite3,time,threading,functools
 
 DEBUG = True
 test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -20,28 +20,30 @@ def startup():
     s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     s.bind((IP,PORT))
     s.listen(5)
-
     while True:
         conn, addr = s.accept()
         print("Connection at: "+str(addr))
-        rsa = RSA()
-        encKey = rsa.exchangeKeys(conn)
-        ## Both client and server should now have three keys
-        aes_key = rsa.recv(conn)
-        aes = AES_Enc(aes_key)
-        aes.send("HELLO",conn)
-        user = checkLogin(aes,conn)
-        aes.send(user,conn)
-        operation = None
-        while operation!="CLOSE":
-            operation = aes.recv(conn)
-            if operation=="SENDMESSAGE":
-                handleSend(aes,user,conn)
-            elif operation=="VIEWMESSAGE":
-                handleView(aes,user,conn)
-            else:
-                print("Unknown Action")
-        conn.close()
+        t = threading.Thread(target=functools.partial(mainloop,conn))
+        t.start()
+def mainloop(conn):
+    rsa = RSA()
+    encKey = rsa.exchangeKeys(conn)
+    ## Both client and server should now have three keys
+    aes_key = rsa.recv(conn)
+    aes = AES_Enc(aes_key)
+    aes.send("HELLO",conn)
+    user = checkLogin(aes,conn)
+    aes.send(user,conn)
+    operation = None
+    while operation!="CLOSE":
+        operation = aes.recv(conn)
+        if operation=="SENDMESSAGE":
+            handleSend(aes,user,conn)
+        elif operation=="VIEWMESSAGE":
+            handleView(aes,user,conn)
+        else:
+            print("Unknown Action")
+    conn.close()
 
 def handleView(aes,user,conn):
     db = sqlite3.connect("Server.db")
