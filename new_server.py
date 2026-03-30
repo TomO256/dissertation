@@ -4,12 +4,17 @@ import socket,bcrypt,sqlite3
 DEBUG = True
 test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 test_socket.connect(("8.8.8.8",80))
-IP = test_socket.getsockname()[0]
+if DEBUG:
+    IP = test_socket.getsockname()[0]
+    PORT = 2345
 test_socket.close()
+if not DEBUG:
+    IP = "81.109.22.44"
+    PORT = "7579"
 print("Running on: "+IP)
 
 
-PORT = 2345
+
 def startup():
     init_db()
     s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)

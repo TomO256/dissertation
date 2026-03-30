@@ -7,10 +7,12 @@ DEBUG = True
 if DEBUG:
     IP = socket.gethostbyname(socket.gethostname())
     IP = "192.168.0.136"
+    PORT = 2345
 else:
     IP = "81.109.22.44"
+    PORT = 7579
 
-PORT = 2345
+
 
 def menu():
     print("----- M E N U ------")
@@ -61,16 +63,10 @@ def viewMessages(rsa,rsaEncKey,sock,user):
         timeStamp = rsa.recv(sock)
         userFrom = rsa.recv(sock)
         ## Expecting Sender's Public Keys
-        print("Expecting Sender's Public Keys")
-        print("IKa:"+str((IKa.public_bytes(encoding=serialization.Encoding.PEM,
-                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
-        print("EKa:"+str((EKa.public_bytes(encoding=serialization.Encoding.PEM,
-                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
         dh.x3dh(IKa,EKa)
         # print("SK "+dh.sk.hex())
         dh.init_ratchets()
         msg = dh.decrypt(message,ratchet)
-        print(msg)
         print("MESSAGE FROM: "+userFrom+" at "+timeStamp+" : "+msg.decode())
         
         
@@ -107,16 +103,8 @@ def sendMessage(rsa,rsaEncKey,sock,user):
     dh = DH_Sender()
     dh.IKa = privKeys[0]
     dh.EKa = privKeys[1]
-    print("Expecting Sender's Public Keys")
-    print("spk: "+str((spk.public_bytes(encoding=serialization.Encoding.PEM,
-                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
-    print("ik: "+str((ik.public_bytes(encoding=serialization.Encoding.PEM,
-                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
-    print("opk: "+str((opk.public_bytes(encoding=serialization.Encoding.PEM,
-                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()))
-
     dh.x3dh(spk,ik,opk)
-    print("SK "+dh.sk.hex())
+    # print("SK "+dh.sk.hex())
     dh.init_ratchets()
     dh.dh_ratchet(spk)
     ct,ratchet = dh.encrypt(msg.encode())
