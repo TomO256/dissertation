@@ -27,7 +27,6 @@ def startup():
         rsa = RSA()
         encKey = rsa.exchangeKeys(conn)
         ## Both client and server should now have three keys
-        msgToSend = "HELLO"
         aes_key = rsa.recv(conn)
         aes = AES_Enc(aes_key)
         aes.send("HELLO",conn)
@@ -47,7 +46,6 @@ def startup():
 def handleView(aes,user,conn):
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    print(user)
     messages = cursor.execute("SELECT * FROM messages WHERE username_to=?",(user,)).fetchall()
     count = len(messages)
     aes.send(str(count),conn)

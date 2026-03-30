@@ -54,8 +54,8 @@ def viewMessages(aes,sock,user):
     dh.SPKb = privKeys[2]
     dh.IKb = privKeys[3]
     dh.OPKb = privKeys[4]
-    dh.DHratchet = dh.SPKb
     for i in range(int(numMessages)):
+        dh.DHratchet = dh.SPKb
         IKa = serialize_public(aes.recv(sock,False))
         EKa = serialize_public(aes.recv(sock,False))
         ratchet = serialize_public(aes.recv(sock,False))
