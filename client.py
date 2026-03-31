@@ -104,13 +104,17 @@ def sendMessage(aes,sock,user):
     ## Get user's recieving keys
     # Keys are in order SPK, IK, OPK
     keys = []
-    for i in range(3):
+    for i in range(4):
         keys.append(aes.recv(sock,False))
     for counter, key in enumerate(keys):
         keys[counter] = serialize_public(key)
+    
+    keys.append(aes.recv(sock,False))
     spk = keys[0]
     ik = keys[1]
     opk = keys[2]
+    ikSign = keys[3]
+    signature = keys[4]
     ## Get message to send
     msg = input("Enter the message to send:\n")
     ## Get User Keys
@@ -119,7 +123,9 @@ def sendMessage(aes,sock,user):
     dh = DH_Sender()
     dh.IKa = privKeys[0]
     dh.EKa = privKeys[1]
-    dh.x3dh(spk,ik,opk)
+    print(signature.decode)
+    x = dh.x3dh(spk,ik,opk,ikSign,signature)
+    print(x)
     # print("SK "+dh.sk.hex())
     dh.init_ratchets()
     dh.dh_ratchet(spk)
@@ -150,7 +156,7 @@ def getPrivKeys(user):
     
 def connect():
     s = socket.socket()
-    s.settimeout(20)
+    s.settimeout(5)
     try:
         s.connect((IP,PORT))
         rsa = RSA()
@@ -164,6 +170,7 @@ def connect():
             user = login(aes,s)
             if user == False:
                 print("Authenticated Failed - Disconnecting")
+                s.close()
                 return
             un = aes.recv(s)
             print("Login Success: Welcome "+un)
@@ -210,8 +217,8 @@ def createAccount(aes,sock):
         sender=DH_Sender()
         reciever = DH_Reciever()
         #Order is:
-        # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OPK
-        content = [sender.IKa,sender.EKa,reciever.SPKb,reciever.IKb,reciever.OPKb]
+        # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OPK, 5 Recv IKb Sign
+        content = [sender.IKa,sender.EKa,reciever.SPKb,reciever.IKb,reciever.OPKb,reciever.IKb_sign]
         toWrite=[]
         for item in content:
             toWrite.append(getSendablePrivKey(item))
@@ -221,6 +228,7 @@ def createAccount(aes,sock):
 
         for i in content:
             aes.send(getSendablePubKey(i),sock)
+        aes.send(reciever.signature,sock)
         response = aes.recv(sock)
         print(response)
         return

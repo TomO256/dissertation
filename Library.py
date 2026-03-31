@@ -154,13 +154,19 @@ class DH_Reciever(object):
         ## Generate the required 3 private keys
         # IKb is the long term identity key
         self.IKb = X25519PrivateKey.generate()
+        self.IKb_sign = Ed25519PrivateKey.generate()
         # SKb is the signed prekey (rotated periodically)
         self.SPKb = X25519PrivateKey.generate()
         #OPK is single time prekey, and deleted after use
         self.OPKb = X25519PrivateKey.generate()
+        self.signature = None
+        self.sign_key()
         # Init initial DH ratchet
         self.DHratchet = self.SPKb
 
+    def sign_key(self):
+        self.signature = self.IKb_sign.sign(getSendablePubKey(self.SPKb))
+        
     def x3dh(self,IKa_pub_key,EKa_pub_key):
         ## Perform requried 4 DH key exchanges
         dh1 = self.SPKb.exchange(IKa_pub_key)
@@ -207,7 +213,13 @@ class DH_Sender(object):
         self.EKa = X25519PrivateKey.generate()
         self.DHratchet = None
 
-    def x3dh(self,SPKb_pub_key, IKb_pub_key, OPKb_pub_key):
+    def x3dh(self,SPKb_pub_key, IKb_pub_key, OPKb_pub_key,IKb_pub_sign,signature):
+        try:
+            IKb_pub_sign.verify(signature,SPKb_pub_key.public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo))
+            print("Signature success")
+        except Exception as e:
+            print("FAILED")
+            return e
         dh1 = self.IKa.exchange(SPKb_pub_key)
         dh2 = self.EKa.exchange(IKb_pub_key)
         dh3 = self.EKa.exchange(SPKb_pub_key)

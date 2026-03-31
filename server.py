@@ -72,7 +72,7 @@ def handleSend(aes,user,conn):
             aes.send("NOT FOUND",conn)
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    keys = cursor.execute("SELECT recvSPK, recvIK, recvOPK FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
+    keys = cursor.execute("SELECT recvSPK, recvIK, recvOPK,recvIKSign,recvSignature FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
     for i in keys:
         aes.send(i,conn)
     msg = aes.recv(conn,False)
@@ -107,6 +107,8 @@ def init_db():
         recvSPK TEXT,
         recvIK TEXT,
         recvOPK TEXT,
+        recvIKSign TEXT,
+        recvSignature TEXT,
         sendIK TEXT,
         sendEK TEXT,
         FOREIGN KEY (username) REFERENCES users(username))""")
@@ -141,13 +143,13 @@ def addUser(username,password):
 
 def addUserPubKey(username,aes,socket):
     keys=[]
-    for i in range(5):
+    for i in range(7):
         keys.append(aes.recv(socket,False))
     #Order is:
-    # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OP
+    # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OP, 5: Recv IKb Sign, 6: Signature
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[2],keys[3],keys[4],keys[0],keys[1],username.upper(),))
+    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, recvIKSign=?, recvSignature=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[2],keys[3],keys[4],keys[5],keys[6],keys[0],keys[1],username.upper(),))
     db.commit()
     db.close()
 
@@ -183,6 +185,7 @@ def checkLogin(aes,socket):
             return i[0]
     print("User validation failed")
     aes.send("NULL",socket)
-    return checkLogin(aes,socket)
+    socket.close()
+    return
     
 startup()
