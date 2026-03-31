@@ -130,7 +130,7 @@ def sendMessage(aes,sock,user):
     msg = input("Enter the message to send:\n")
     ## Get User Keys
 
-    privKeys = getPrivKeys(user,opk)
+    privKeys = getPrivKeys(user,None)
     # print("Encrypted using")
     # print(opk.public_bytes(encoding=serialization.Encoding.PEM,
     #                                     format=serialization.PublicFormat.SubjectPublicKeyInfo))
