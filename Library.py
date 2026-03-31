@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.fernet import Fernet
 from Crypto.Cipher import AES # type: ignore
 
@@ -136,8 +137,7 @@ def unpad(msg):
     # remove pkcs7 padding
     return msg[:-msg[-1]]
 
-'I also skipped the verification of SPK_b’s signature as I couldn’t find a python library for it.'
-' - Dont like this :/'
+
 class SymmRatchet(object):
     def __init__(self,key):
         self.state = key
@@ -163,6 +163,9 @@ class DH_Reciever(object):
         self.sign_key()
         # Init initial DH ratchet
         self.DHratchet = self.SPKb
+    
+    def gen_opk(self):
+        return X25519PrivateKey.generate()
 
     def sign_key(self):
         self.signature = self.IKb_sign.sign(getSendablePubKey(self.SPKb))
@@ -190,20 +193,10 @@ class DH_Reciever(object):
         shared_send = self.root_ratchet.next(dh_send)[0]
         self.send_ratchet = SymmRatchet(shared_send)
 
-    # def send(self,msg,socket):
-        
-    #     key, iv = self.send_ratchet.next()
-    #     ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
-    #     toSend = ct+b":"+self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
-    #                                     format=serialization.PublicFormat.SubjectPublicKeyInfo)
-    #     socket.send(bytesLength(toSend))
-    #     # print("message sent: "+str(toSend))
-    #     socket.send(toSend)
-
     def decrypt(self,msg,ratchet):
         self.dh_ratchet(ratchet)
         key, iv = self.recv_ratchet.next()
-        final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg)
+        final = AES.new(key,AES.MODE_CBC,iv).decrypt(msg)
         return unpad(final)
 
 class DH_Sender(object):
@@ -216,7 +209,7 @@ class DH_Sender(object):
     def x3dh(self,SPKb_pub_key, IKb_pub_key, OPKb_pub_key,IKb_pub_sign,signature):
         try:
             IKb_pub_sign.verify(signature,SPKb_pub_key.public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo))
-            print("Signature success")
+            print("Messsage Signed Successfully")
         except Exception as e:
             print("FAILED")
             return e
@@ -243,20 +236,11 @@ class DH_Sender(object):
 
     def encrypt(self,msg):
         key, iv = self.send_ratchet.next()
-        ct = AES.new(key, AES.MODE_CBC, iv).encrypt(pad(msg))
+        ct = AES.new(key,AES.MODE_CBC,iv).encrypt(pad(msg))
         ratchet = self.DHratchet.public_key().public_bytes(encoding=serialization.Encoding.PEM,
                                         format=serialization.PublicFormat.SubjectPublicKeyInfo)
         return ct,ratchet
 
-    # def recv(self,socket):
-    #     leng = socket.recv(8).decode()
-    #     msg = socket.recv(int(leng))
-    #     msg = msg.split(b":")
-    #     # print("Key found: "+str(msg[1]))
-    #     self.dh_ratchet(serialize_public(msg[1]))
-    #     key, iv = self.recv_ratchet.next()
-    #     final = AES.new(key,AES.MODE_CBC, iv).decrypt(msg[0])
-    #     return unpad(final)
 ######################## MISC FUNCTIONS ########################
 
 def bytesLength(string):
@@ -290,4 +274,7 @@ def getSendablePrivKey(key):
 def getSendablePubKey(key):
     return key.public_key().public_bytes(encoding=serialization.Encoding.PEM,
                                         format=serialization.PublicFormat.SubjectPublicKeyInfo)
-    
+
+def pubBytes(pubKey):
+    return pubKey.public_bytes(encoding=serialization.Encoding.PEM,
+                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)

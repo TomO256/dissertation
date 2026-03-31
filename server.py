@@ -55,7 +55,7 @@ def handleView(aes,user,conn):
     for msg in messages:
         keys = cursor.execute("SELECT sendIK, sendEK FROM keys WHERE username=?",(msg[1],)).fetchone()
         aes.send(keys[0]+b"##"+keys[1]+b"##"+msg[4]+b"##"+msg[3],conn)
-        aes.send(msg[5]+"##"+msg[1],conn)
+        aes.send(msg[5]+"##"+msg[1]+"##"+str(msg[6]),conn)
         time.sleep(0.1)
 
 
@@ -72,14 +72,18 @@ def handleSend(aes,user,conn):
             aes.send("NOT FOUND",conn)
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    keys = cursor.execute("SELECT recvSPK, recvIK, recvOPK,recvIKSign,recvSignature FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
+    opk = cursor.execute("SELECT opk_id, opk FROM opks WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
+    keys = cursor.execute("SELECT recvSPK, recvIK,recvIKSign,recvSignature FROM keys WHERE UPPER(username)=?",(userTo.upper(),)).fetchone()
+    keys = list(keys)
+    keys.insert(2,opk[1])
     for i in keys:
         aes.send(i,conn)
     msg = aes.recv(conn,False)
     ratchet = aes.recv(conn,False)
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    cursor.execute("INSERT INTO messages (username_from,username_to,contents,ratchet) VALUES (?,?,?,?)",(user,userTo,msg,ratchet))
+    cursor.execute("INSERT INTO messages (username_from,username_to,contents,ratchet,opk_id) VALUES (?,?,?,?,?)",(user,userTo,msg,ratchet,opk[0],))
+    cursor.execute("DELETE FROM opks WHERE username=? AND opk_id=?",(user,opk[0],))
     db.commit()
     db.close()
     
@@ -98,20 +102,27 @@ def init_db():
         contents TEXT,
         ratchet TEXT,
         sent DATETIME DEFAULT CURRENT_TIMESTAMP,
+        opk_id INTEGER,
         FOREIGN KEY (username_from) REFERENCES users(username),
-        FOREIGN KEY (username_to) REFERENCES users(username)
+        FOREIGN KEY (username_to) REFERENCES users(username),
+        FOREIGN KEY (opk_id) REFERENCES opks(opk_id)
         )""")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS keys(
         username TEXT UNIQUE PRIMARY KEY,
         recvSPK TEXT,
         recvIK TEXT,
-        recvOPK TEXT,
         recvIKSign TEXT,
         recvSignature TEXT,
         sendIK TEXT,
         sendEK TEXT,
         FOREIGN KEY (username) REFERENCES users(username))""")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS opks(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        opk_id INTEGER,
+        opk BLOB)""")
     db.commit()
     db.close()
     return True
@@ -143,13 +154,19 @@ def addUser(username,password):
 
 def addUserPubKey(username,aes,socket):
     keys=[]
-    for i in range(7):
+    for i in range(6):
         keys.append(aes.recv(socket,False))
+    numOpks = int(aes.recv(socket))
+    opks=[]
+    for i in range(numOpks):
+        opks.append(aes.recv(socket,False))
     #Order is:
-    # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv OP, 5: Recv IKb Sign, 6: Signature
+    # 0: Sender IK, 1: Sender EK, 2: Recv SPK, 3: Recv IK, 4: Recv IKb Sign, 5: Signature
     db = sqlite3.connect("Server.db")
     cursor = db.cursor()
-    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?, recvOPK=?, recvIKSign=?, recvSignature=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[2],keys[3],keys[4],keys[5],keys[6],keys[0],keys[1],username.upper(),))
+    cursor.execute("UPDATE keys SET recvSPK=?, recvIK=?,recvIKSign=?, recvSignature=?, sendIK=?, sendEK=? WHERE UPPER(username)=?",(keys[2],keys[3],keys[4],keys[5],keys[0],keys[1],username.upper(),))
+    for i in range(1,len(opks)+1):
+        cursor.execute("INSERT INTO opks (username,opk_id,opk) VALUES (?,?,?)",(username,i,opks[i-1]))
     db.commit()
     db.close()
 
