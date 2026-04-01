@@ -2,6 +2,8 @@ from Library import *
 import socket
 import getpass
 import sqlite3
+import tqdm
+import time
 
 DEBUG = True
 
@@ -285,8 +287,9 @@ def createAccount(aes,sock):
             aes.send(getSendablePubKey(i),sock)
         aes.send(reciever.signature,sock)
         aes.send(str(len(opks)),sock)
-        for i in opks:
+        for i in tqdm.tqdm(opks):
             aes.send(getSendablePubKey(i),sock)
+            time.sleep(0.1)
 
         response = aes.recv(sock)
         print(response)

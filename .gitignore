@@ -4,3 +4,4 @@ __pycache__/
 *.key
 Server.db
 *_keys.db
+Server.log

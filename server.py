@@ -1,5 +1,7 @@
 from Library import RSA, enclosed, AES_Enc
 import socket,bcrypt,sqlite3,time,threading,functools,os
+import logging
+import datetime
 
 DEBUG = True
 
@@ -12,16 +14,54 @@ if DEBUG:
 if not DEBUG:
     IP = "0.0.0.0"
     PORT = 7579
-print("Running on: "+IP+":"+str(PORT))
+logging.basicConfig(filename="Server.log",format="{asctime} - {levelname} - {message}",style="{",datefmt="%Y-%m-%d %H:%M",level=logging.DEBUG)
+def log(msg):
+    # print(msg)
+    logging.info(msg)
 
+def rate_limit(addr):
+    limit = 3
+    window = 60
+    contents = []
+    with open("Server.log") as f:
+        for l in f:
+            parts = l.strip().split(" - ")
+            ts = parts[0]  
+            msg = parts[-1]
+            contents.append((ts, msg))
+    contents.reverse()
+    now = datetime.datetime.now()
+    count = 0
+    for ts, msg in contents:
+        print(msg)
+        if msg == "Server Started":
+            break
+        if "Connection at:" in msg:
+            print("run")
+            if str(addr) in msg:
+                log_time = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M")
+                print(now - log_time)
+                if now - log_time <= datetime.timedelta(seconds=window):
+                    count += 1
+                    if count >= limit:
+                        return True
+    return False
+        
+        
 def startup():
     init_db()
     s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     s.bind((IP,PORT))
+    log("Server Started")
     s.listen(5)
     while True:
         conn, addr = s.accept()
-        print("Connection at: "+str(addr))
+        log("Connection at: "+str(addr))
+        if rate_limit(addr[0]):
+            log("Limited user: "+str(addr)+" for abuse")
+            conn.close()
+            continue
+
         t = threading.Thread(target=functools.partial(mainloop,conn,addr))
         t.start()
 
@@ -33,17 +73,24 @@ def mainloop(conn,addr):
     aes = AES_Enc(aes_key)
     aes.send("HELLO",conn)
     user = checkLogin(aes,conn)
-    aes.send(user,conn)
-    operation = None
+    if user is not None:
+        aes.send(user,conn)
+        operation = None
+    else:
+        operation = "CLOSE"
     while operation!="CLOSE":
-        operation = aes.recv(conn)
+        try:
+            operation = aes.recv(conn)
+        except Exception as e:
+            log("Invalid operation, with error: "+str(e))
+            operation = "CLOSE"
         if operation=="SENDMESSAGE":
             handleSend(aes,user,conn)
         elif operation=="VIEWMESSAGE":
             handleView(aes,user,conn)
         elif operation=="TERMINATE" and DEBUG==True:
             os._exit(1)
-    print("Connection with "+str(addr)+" closed")
+    log("Connection Closed: "+str(addr))
     conn.close()
 
 def handleView(aes,user,conn):
@@ -200,9 +247,8 @@ def checkLogin(aes,socket):
         if i[0].upper() == un.upper() and check_pw(pw,i[1]):
             aes.send(un,socket)
             return i[0]
-    print("User validation failed")
     aes.send("NULL",socket)
     socket.close()
-    return
+    return None
     
 startup()
