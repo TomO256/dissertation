@@ -191,6 +191,11 @@ def connect():
     s.settimeout(5)
     try:
         s.connect((IP,PORT))
+        status = s.recv(9).decode()
+        if status == "CONN DENN":
+            print("You have been blocked from server due to abuse")
+            s.close()
+            return
         rsa = RSA()
         encKey = rsa.exchangeKeys(s)
         ## Both client and server should now have three keys each

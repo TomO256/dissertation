@@ -15,9 +15,9 @@ if not DEBUG:
     IP = "0.0.0.0"
     PORT = 7579
 logging.basicConfig(filename="Server.log",format="{asctime} - {levelname} - {message}",style="{",datefmt="%Y-%m-%d %H:%M",level=logging.DEBUG)
-def log(msg):
+def log(msg,lvl=logging.INFO):
     # print(msg)
-    logging.info(msg)
+    logging.log(lvl,msg)
 
 def rate_limit(addr):
     limit = 3
@@ -32,19 +32,23 @@ def rate_limit(addr):
     contents.reverse()
     now = datetime.datetime.now()
     count = 0
+    active=0
     for ts, msg in contents:
-        print(msg)
         if msg == "Server Started":
             break
         if "Connection at:" in msg:
-            print("run")
             if str(addr) in msg:
                 log_time = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M")
-                print(now - log_time)
-                if now - log_time <= datetime.timedelta(seconds=window):
-                    count += 1
+                if now - log_time<= datetime.timedelta(seconds=window):
+                    count+=1
                     if count >= limit:
                         return True
+                active+=1
+        if "Connection closed" in msg:
+            if str(addr) in msg:
+                active-=1
+    if active > 3:
+        return True
     return False
         
         
@@ -57,41 +61,50 @@ def startup():
     while True:
         conn, addr = s.accept()
         log("Connection at: "+str(addr))
-        if rate_limit(addr[0]):
-            log("Limited user: "+str(addr)+" for abuse")
-            conn.close()
-            continue
-
         t = threading.Thread(target=functools.partial(mainloop,conn,addr))
         t.start()
 
 def mainloop(conn,addr):
-    rsa = RSA()
-    encKey = rsa.exchangeKeys(conn)
-    ## Both client and server should now have three keys
-    aes_key = rsa.recv(conn)
-    aes = AES_Enc(aes_key)
-    aes.send("HELLO",conn)
-    user = checkLogin(aes,conn)
-    if user is not None:
-        aes.send(user,conn)
-        operation = None
-    else:
-        operation = "CLOSE"
-    while operation!="CLOSE":
-        try:
-            operation = aes.recv(conn)
-        except Exception as e:
-            log("Invalid operation, with error: "+str(e))
+    try:
+        if rate_limit(addr[0]):
+            conn.send("CONN DENN".encode())
+            log("Limited user: "+str(addr)+" for abuse",logging.WARNING)
+            log("Connection closed: "+str(addr))
+            conn.close()
+            return
+        conn.send("CONN PERM".encode())
+        rsa = RSA()
+        encKey = rsa.exchangeKeys(conn)
+        ## Both client and server should now have three keys
+        aes_key = rsa.recv(conn)
+        aes = AES_Enc(aes_key)
+        aes.send("HELLO",conn)
+        user = checkLogin(aes,conn)
+        if user is not None:
+            aes.send(user,conn)
+            operation = None
+        else:
             operation = "CLOSE"
-        if operation=="SENDMESSAGE":
-            handleSend(aes,user,conn)
-        elif operation=="VIEWMESSAGE":
-            handleView(aes,user,conn)
-        elif operation=="TERMINATE" and DEBUG==True:
-            os._exit(1)
-    log("Connection Closed: "+str(addr))
-    conn.close()
+        while operation!="CLOSE":
+            try:
+                operation = aes.recv(conn)
+            except Exception as e:
+                log("Invalid operation, with error: "+str(e))
+                operation = "CLOSE"
+            if operation=="SENDMESSAGE":
+                handleSend(aes,user,conn)
+            elif operation=="VIEWMESSAGE":
+                handleView(aes,user,conn)
+            elif operation=="TERMINATE" and DEBUG==True:
+                os._exit(1)
+        log("Connection closed: "+str(addr))
+        conn.close()
+    except Exception as e:
+        log("Connection closed unexpectedly (likely hostile disconnect) "+str(addr),logging.WARNING)
+        try:
+            conn.close()
+        except:
+            pass
 
 def handleView(aes,user,conn):
     db = sqlite3.connect("Server.db")
