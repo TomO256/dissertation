@@ -81,15 +81,7 @@ def viewMessages(aes,sock,user):
         userFrom = plaintext_meta[1]
         opk_id = plaintext_meta[2]
         dh.OPKb = get_opk_from_id(user,opk_id)
-        ## Expecting Sender's Public Keys
-        # print("Sender IKa pub (from server):", pubBytes(IKa))
-        # print("Sender EKa pub (from server):", pubBytes(EKa))
-        # print("Receiver SPKb pub:", getSendablePubKey(dh.SPKb))
-        # print("Receiver IKb  pub:", getSendablePubKey(dh.IKb))
-        # print("Receiver OPKb pub:", getSendablePubKey(dh.OPKb))
-
         dh.x3dh(IKa,EKa)
-        # print("SK "+dh.sk.hex())
         dh.init_ratchets()
         msg = dh.decrypt(message,ratchet)
         print("MESSAGE FROM: "+userFrom+" at "+timeStamp+" : "+msg.decode())
@@ -130,26 +122,11 @@ def sendMessage(aes,sock,user):
     signature = keys[4]
     ## Get message to send
     msg = input("Enter the message to send:\n")
-    ## Get User Keys
-
     privKeys = getPrivKeys(user,None)
-    # print("Encrypted using")
-    # print(opk.public_bytes(encoding=serialization.Encoding.PEM,
-    #                                     format=serialization.PublicFormat.SubjectPublicKeyInfo))
-    
-    ## Create Ratchet
     dh = DH_Sender()
     dh.IKa = privKeys[0]
     dh.EKa = privKeys[1]
-    # print("Sender IKa pub:", getSendablePubKey(privKeys[0]))
-    # print("Sender EKa pub:", getSendablePubKey(privKeys[1]))
-    # print("Using SPK pub:", pubBytes(spk))
-    # print("Using IK  pub:", pubBytes(ik))
-    # print("Using OPK pub:", pubBytes(opk))
-
     x = dh.x3dh(spk,ik,opk,ikSign,signature)
-    # print(x)
-    # print("SK "+dh.sk.hex())
     dh.init_ratchets()
     dh.dh_ratchet(spk)
     ct,ratchet = dh.encrypt(msg.encode())
@@ -162,7 +139,6 @@ def getPrivKeys(user,opk_pub=None):
     Private keys returned from file 'user.key' in format:
     0: Sender IK, 1: Sender EK, 2: Recv IK, 3: Recv SPK, 4: Recv OPK
     '''
-    ##TODO: Make this break out of main program safely when file key not found
     privKeys = []
     db = sqlite3.connect(user+"_keys.db")
     cursor = db.cursor()
@@ -306,7 +282,6 @@ def createAccount(aes,sock):
 
 
 def pwcheck(password):
-    return True
     if len(password) < 8:
         return False
     if password.upper() == password:

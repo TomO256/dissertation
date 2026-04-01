@@ -200,7 +200,6 @@ def existingUser(username):
     return False
 
 def addUser(username,password):
-    ##TODO: PW check against common db
     if existingUser(username):
         return "Error Creating Account: That username is already taken"
     db = sqlite3.connect("Server.db")
