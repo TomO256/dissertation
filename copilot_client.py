@@ -2,40 +2,33 @@ import socket
 import ssl
 import threading
 
-HOST = "127.0.0.1"   # Change to server IP
+HOST = "127.0.0.1"
 PORT = 5000
 
-def receive_messages(conn):
+def listen(conn):
     while True:
         try:
-            msg = conn.recv(4096).decode()
-            if not msg:
-                break
-            print(msg)
+            print(conn.recv(4096).decode(), end="")
         except:
             break
 
-def main():
-    context = ssl.create_default_context()
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_REQUIRED  # For testing; can enforce cert verification
-    context.load_verify_locations("cert.pem")
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+context.minimum_version = ssl.TLSVersion.TLSv1_2
 
-    raw_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn = context.wrap_socket(raw_sock, server_hostname=HOST)
+# ✅ Disable CA verification (self‑signed)
+context.check_hostname = False
+context.verify_mode = ssl.CERT_NONE
 
-    conn.connect((HOST, PORT))
-    print("[*] Connected to secure chat server.")
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+conn = context.wrap_socket(sock, server_hostname="localhost")
+conn.connect((HOST, PORT))
 
-    threading.Thread(target=receive_messages, args=(conn,), daemon=True).start()
+threading.Thread(target=listen, args=(conn,), daemon=True).start()
 
-    while True:
-        msg = input("")
-        if msg.lower() == "/quit":
-            break
-        conn.send(msg.encode())
+while True:
+    msg = input()
+    if msg == "/quit":
+        break
+    conn.sendall(msg.encode() + b"\n")
 
-    conn.close()
-
-if __name__ == "__main__":
-    main()
+conn.close()

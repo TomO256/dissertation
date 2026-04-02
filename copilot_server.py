@@ -5,44 +5,56 @@ import threading
 HOST = "0.0.0.0"
 PORT = 5000
 
-clients = []
+clients = {}
 
 def handle_client(conn, addr):
-    print(f"[+] Connected: {addr}")
     try:
+        conn.sendall(b"Username: ")
+        username = conn.recv(1024).decode().strip()
+        clients[username] = conn
+
         while True:
-            msg = conn.recv(4096)
-            if not msg:
+            data = conn.recv(4096)
+            if not data:
                 break
 
-            broadcast(msg, conn)
+            msg = data.decode().strip()
+            if not msg.startswith("@"):
+                conn.send(b"ERROR: Use @user message\n")
+                continue
+
+            target, message = msg.split(" ", 1)
+            target = target[1:]
+
+            if target in clients:
+                clients[target].sendall(
+                    f"[{username}] {message}\n".encode()
+                )
+            else:
+                conn.send(b"ERROR: User not online\n")
+
     finally:
         conn.close()
-        clients.remove(conn)
-        print(f"[-] Disconnected: {addr}")
-
-def broadcast(message, sender):
-    for c in clients:
-        if c != sender:
-            c.send(message)
+        clients.pop(username, None)
 
 def main():
-    print("[*] Starting secure chat server...")
-
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain("cert.pem", "key.pem")
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
-        sock.bind((HOST, PORT))
-        sock.listen(5)
-        print(f"[*] Listening on {HOST}:{PORT}")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((HOST, PORT))
+    sock.listen(5)
 
-        with context.wrap_socket(sock, server_side=True) as ssock:
-            while True:
-                conn, addr = ssock.accept()
-                clients.append(conn)
-                thread = threading.Thread(target=handle_client, args=(conn, addr))
-                thread.start()
+    with context.wrap_socket(sock, server_side=True) as ssock:
+        print("[SERVER] Listening securely")
+        while True:
+            conn, addr = ssock.accept()
+            threading.Thread(
+                target=handle_client,
+                args=(conn, addr),
+                daemon=True
+            ).start()
 
 if __name__ == "__main__":
     main()
