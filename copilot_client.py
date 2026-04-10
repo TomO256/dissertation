@@ -2,8 +2,8 @@ import socket
 import ssl
 import threading
 
-HOST = "127.0.0.1"
-PORT = 5000
+HOST = "81.109.22.44"
+PORT = 7580
 
 def listen(conn):
     while True:
@@ -14,14 +14,24 @@ def listen(conn):
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 context.minimum_version = ssl.TLSVersion.TLSv1_2
-
-# ✅ Disable CA verification (self‑signed)
 context.check_hostname = False
 context.verify_mode = ssl.CERT_NONE
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 conn = context.wrap_socket(sock, server_hostname="localhost")
 conn.connect((HOST, PORT))
+
+print(conn.recv(1024).decode(), end="")
+conn.sendall(input().encode() + b"\n")
+
+print(conn.recv(1024).decode(), end="")
+conn.sendall(input().encode() + b"\n")
+
+response = conn.recv(1024).decode()
+print(response)
+if "FAILED" in response:
+    conn.close()
+    exit()
 
 threading.Thread(target=listen, args=(conn,), daemon=True).start()
 

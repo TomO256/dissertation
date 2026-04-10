@@ -1,17 +1,52 @@
 import socket
 import ssl
 import threading
+import json
+import hashlib
+import binascii
 
 HOST = "0.0.0.0"
-PORT = 5000
+PORT = 7580
+USER_DB = "users.json"
 
 clients = {}
 
+def verify_user(username, password):
+    try:
+        with open(USER_DB) as f:
+            db = json.load(f)
+    except:
+        return False
+
+    if username not in db:
+        return False
+
+    salt = binascii.unhexlify(db[username]["salt"])
+    stored_hash = db[username]["hash"]
+
+    check = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt, 100_000
+    )
+
+    return binascii.hexlify(check).decode() == stored_hash
+
+
 def handle_client(conn, addr):
+    username = None
     try:
         conn.sendall(b"Username: ")
         username = conn.recv(1024).decode().strip()
+
+        conn.sendall(b"Password: ")
+        password = conn.recv(1024).decode().strip()
+
+        if not verify_user(username, password):
+            conn.sendall(b"AUTH FAILED\n")
+            return
+
+        conn.sendall(b"AUTH OK\n")
         clients[username] = conn
+        print(f"[+] {username} logged in")
 
         while True:
             data = conn.recv(4096)
@@ -20,7 +55,7 @@ def handle_client(conn, addr):
 
             msg = data.decode().strip()
             if not msg.startswith("@"):
-                conn.send(b"ERROR: Use @user message\n")
+                conn.sendall(b"ERROR: Use @user message\n")
                 continue
 
             target, message = msg.split(" ", 1)
@@ -31,11 +66,13 @@ def handle_client(conn, addr):
                     f"[{username}] {message}\n".encode()
                 )
             else:
-                conn.send(b"ERROR: User not online\n")
+                conn.sendall(b"ERROR: User not online\n")
 
     finally:
+        if username:
+            clients.pop(username, None)
         conn.close()
-        clients.pop(username, None)
+
 
 def main():
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
