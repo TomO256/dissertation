@@ -3,7 +3,7 @@ import socket,bcrypt,sqlite3,time,threading,functools,os
 import logging
 import datetime
 
-DEBUG = True
+DEBUG = False
 
 if DEBUG:
     test_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
