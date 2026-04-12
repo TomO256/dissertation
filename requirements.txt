@@ -1,0 +1,7 @@
+bcrypt==5.0.0
+cffi==2.0.0
+colorama==0.4.6
+cryptography==46.0.5
+pycparser==3.0
+pycryptodome==3.23.0
+tqdm==4.67.3
