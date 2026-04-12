@@ -5,3 +5,4 @@ __pycache__/
 Server.db
 *_keys.db
 Server.log
+*.json
